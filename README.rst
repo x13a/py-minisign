@@ -26,4 +26,16 @@ Library
 
     sk = minisign.SecretKey.from_file('/path/to/secret.key')
     sk.decrypt('strong_password')
-    sk.sign(b'very important data')
+    sig = sk.sign(b'very important data')
+
+    # generate key pair
+
+    key_pair = minisign.KeyPair.generate()
+    sk = key_pair.secret_key
+    pk = key_pair.public_key
+
+    # save key
+
+    sk.encrypt('strong_password')
+    with open('/path/to/secret.key', 'wb') as f:
+        f.write(bytes(sk))

@@ -52,10 +52,12 @@ class MinisignTestCase(unittest.TestCase):
         ).verify(b'test', sig)
 
     def test_public_key_conv(self):
-        PublicKey.from_bytes(bytes(KeyPair.generate().public_key))
+        pk = KeyPair.generate().public_key
+        self.assertEqual(pk, PublicKey.from_bytes(bytes(pk)))
 
     def test_secret_key_conv(self):
-        SecretKey.from_bytes(bytes(KeyPair.generate().secret_key))
+        sk = KeyPair.generate().secret_key
+        self.assertEqual(sk, SecretKey.from_bytes(bytes(sk)))
 
     def test_signature_conv(self):
         sig = KeyPair.generate().secret_key.sign(b'data')
@@ -72,7 +74,6 @@ class MinisignTestCase(unittest.TestCase):
 
     def test_secret_key_crypt(self):
         sk = KeyPair.generate().secret_key
-        sk._keynum_sk.checksum[0:] = sk._calc_checksum()
         kn_origin = copy.deepcopy(sk._keynum_sk)
         password = 'strong_password'
         sk.encrypt(password)

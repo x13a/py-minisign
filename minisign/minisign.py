@@ -101,6 +101,9 @@ class Signature:
     def untrusted_comment(self) -> str:
         return self._untrusted_comment
 
+    def set_untrusted_comment(self, value: str):
+        self.__dict__['_untrusted_comment'] = value
+
     @property
     def trusted_comment(self) -> str:
         return self._trusted_comment[TRUSTED_COMMENT_PREFIX_LEN:]
@@ -114,7 +117,7 @@ class Signature:
             self._signature
         ) + b'\n')
         buf.write(self._trusted_comment.encode() + b'\n')
-        buf.write(base64.standard_b64encode(self._global_signature))
+        buf.write(base64.standard_b64encode(self._global_signature) + b'\n')
         return buf.getvalue()
 
     def _is_prehashed(self) -> bool:
@@ -169,6 +172,9 @@ class PublicKey:
     def untrusted_comment(self) -> Optional[str]:
         return self._untrusted_comment
 
+    def set_untrusted_comment(self, value: Optional[str]):
+        self.__dict__['_untrusted_comment'] = value
+
     def verify(self, data: Union[bytes, BinaryIO], signature: Signature):
         if self._keynum_pk.key_id != signature._key_id:
             raise VerifyError('incompatible key identifiers')
@@ -207,7 +213,7 @@ class PublicKey:
             if self._untrusted_comment is None else
             self._untrusted_comment
         ).encode() + b'\n')
-        buf.write(self.to_base64())
+        buf.write(self.to_base64() + b'\n')
         return buf.getvalue()
 
 
@@ -290,13 +296,15 @@ class SecretKey:
     def untrusted_comment(self) -> str:
         return self._untrusted_comment
 
+    def set_untrusted_comment(self, value: str):
+        self.__dict__['_untrusted_comment'] = value
+
     def decrypt(self, password: str):
         self._crypt(password)
         if self._calc_checksum() != bytes(self._keynum_sk.checksum):
             raise Error('wrong password for that key')
 
     def encrypt(self, password: str):
-        self._keynum_sk.checksum[0:] = self._calc_checksum()
         self._crypt(password)
 
     def _crypt(self, password: str):
@@ -396,7 +404,7 @@ class SecretKey:
             bytes(self._keynum_sk.secret_key) +
             bytes(self._keynum_sk.public_key) +
             bytes(self._keynum_sk.checksum)
-        ))
+        ) + b'\n')
         return buf.getvalue()
 
 
@@ -407,42 +415,46 @@ class KeyPair:
 
     @classmethod
     def generate(cls) -> KeyPair:
-        sk = ed25519.Ed25519PrivateKey.generate()
-        key_id = secrets.token_bytes(KEY_ID_LEN)
-        public_key = sk.public_key().public_bytes(
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key().public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw,
         )
-        return cls(
-            secret_key=SecretKey(
-                _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
-                                   f'minisign secret key '
-                                   f'{key_id.hex().upper()}',
-                _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
-                _kdf_algorithm=KDFAlgorithm.SCRYPT,
-                _cksum_algorithm=CksumAlgorithm.BLAKE2b,
-                _kdf_salt=secrets.token_bytes(SALT_LEN),
-                _kdf_opslimit=(1_048_576).to_bytes(
-                    KDF_PARAM_LEN,
-                    byteorder='little',
-                ),
-                _kdf_memlimit=(33_554_432).to_bytes(
-                    KDF_PARAM_LEN,
-                    byteorder='little',
-                ),
-                _keynum_sk=KeynumSK(
-                    key_id=bytearray(key_id),
-                    secret_key=bytearray(sk.private_bytes(
-                        encoding=serialization.Encoding.Raw,
-                        format=serialization.PrivateFormat.Raw,
-                        encryption_algorithm=serialization.NoEncryption(),
-                    )),
-                    public_key=bytearray(public_key),
-                    checksum=bytearray(CHECKSUM_LEN),
-                ),
+        key_id = secrets.token_bytes(KEY_ID_LEN)
+        sk = SecretKey(
+            _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
+                               f'minisign secret key '
+                               f'{key_id.hex().upper()}',
+            _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
+            _kdf_algorithm=KDFAlgorithm.SCRYPT,
+            _cksum_algorithm=CksumAlgorithm.BLAKE2b,
+            _kdf_salt=secrets.token_bytes(SALT_LEN),
+            _kdf_opslimit=(1_048_576).to_bytes(
+                KDF_PARAM_LEN,
+                byteorder='little',
             ),
+            _kdf_memlimit=(33_554_432).to_bytes(
+                KDF_PARAM_LEN,
+                byteorder='little',
+            ),
+            _keynum_sk=KeynumSK(
+                key_id=bytearray(key_id),
+                secret_key=bytearray(private_key.private_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PrivateFormat.Raw,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )),
+                public_key=bytearray(public_key),
+                checksum=bytearray(CHECKSUM_LEN),
+            ),
+        )
+        sk._keynum_sk.checksum[0:] = sk._calc_checksum()
+        return cls(
+            secret_key=sk,
             public_key=PublicKey(
-                _untrusted_comment=None,
+                _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
+                                   f'minisign public key '
+                                   f'{key_id.hex().upper()}',
                 _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
                 _keynum_pk=KeynumPK(
                     key_id=key_id,
