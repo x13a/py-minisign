@@ -5,6 +5,8 @@ from typing import (
     Union,
 )
 
+from .exceptions import ParseError
+
 
 class Reader:
     def __init__(self, data: bytes):
@@ -13,14 +15,14 @@ class Reader:
 
     def read(self, size: int) -> bytes:
         pos = self._pos + size
-        res = self._buf[self._pos:pos]
-        if len(res) != size:
-            raise ValueError('read size mismatch')
+        data = self._buf[self._pos:pos]
+        if len(data) != size:
+            raise ParseError('read size mismatch')
         self._pos = pos
-        return res
+        return data
 
 
-def get_data(data: Union[bytes, BinaryIO], prehash: bool) -> bytes:
+def read_data(data: Union[bytes, BinaryIO], prehash: bool) -> bytes:
     if prehash:
         if isinstance(data, io.BufferedIOBase):
             hasher = hashlib.blake2b()

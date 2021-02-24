@@ -1,7 +1,12 @@
+import copy
+import secrets
 import unittest
 
 from .minisign import (
+    KEYNUM_SK_LEN,
+    KeyPair,
     PublicKey,
+    SecretKey,
     Signature,
 )
 
@@ -45,3 +50,38 @@ class MinisignTestCase(unittest.TestCase):
         PublicKey.from_base64(
             'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
         ).verify(b'test', sig)
+
+    def test_public_key_conv(self):
+        PublicKey.from_bytes(bytes(KeyPair.generate().public_key))
+
+    def test_secret_key_conv(self):
+        SecretKey.from_bytes(bytes(KeyPair.generate().secret_key))
+
+    def test_signature_conv(self):
+        sig = KeyPair.generate().secret_key.sign(b'data')
+        self.assertEqual(sig, Signature.from_bytes(bytes(sig)))
+
+    def test_keynum_sk_xor(self):
+        kn = KeyPair.generate().secret_key._keynum_sk
+        kn_origin = copy.deepcopy(kn)
+        key = secrets.token_bytes(KEYNUM_SK_LEN)
+        kn.xor(key)
+        self.assertNotEqual(kn_origin, kn)
+        kn.xor(key)
+        self.assertEqual(kn_origin, kn)
+
+    def test_secret_key_crypt(self):
+        sk = KeyPair.generate().secret_key
+        sk._keynum_sk.checksum[0:] = sk._calc_checksum()
+        kn_origin = copy.deepcopy(sk._keynum_sk)
+        password = 'strong_password'
+        sk.encrypt(password)
+        self.assertNotEqual(kn_origin, sk._keynum_sk)
+        sk.decrypt(password)
+        self.assertEqual(kn_origin, sk._keynum_sk)
+
+    def test_sign_verify(self):
+        kp = KeyPair.generate()
+        data = b'very important data'
+        kp.public_key.verify(data, kp.secret_key.sign(data))
+        kp.public_key.verify(data, kp.secret_key.sign(data, prehash=True))

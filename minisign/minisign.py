@@ -7,8 +7,8 @@ from __future__ import annotations
 import base64
 import enum
 import hashlib
-import os
 import io
+import os
 import secrets
 import time
 from dataclasses import dataclass
@@ -18,13 +18,19 @@ from typing import (
     Union,
 )
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.kdf import scrypt
 
+from .exceptions import (
+    Error,
+    ParseError,
+    VerifyError,
+)
 from .helpers import (
     Reader,
-    get_data,
+    read_data,
 )
 
 ALG_LEN = 2
@@ -41,10 +47,6 @@ KEYNUM_SK_LEN = 104
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
 TRUSTED_COMMENT_PREFIX = 'trusted comment: '
 TRUSTED_COMMENT_PREFIX_LEN = len(TRUSTED_COMMENT_PREFIX)
-
-
-class Error(ValueError):
-    pass
 
 
 @enum.unique
@@ -76,10 +78,10 @@ class Signature:
     def from_bytes(cls, data: bytes) -> Signature:
         lines = data.splitlines()
         if len(lines) < 4:
-            raise Error('incomplete encoded signature')
+            raise ParseError('incomplete encoded signature')
         glob_sig = base64.standard_b64decode(lines[3])
         if len(glob_sig) != SIG_LEN:
-            raise Error('invalid encoded signature')
+            raise ParseError('invalid encoded signature')
         buf = Reader(base64.standard_b64decode(lines[1]))
         return cls(
             _untrusted_comment=lines[0].decode(),
@@ -121,16 +123,16 @@ class Signature:
 
 @dataclass(frozen=True)
 class KeynumPK:
-    _key_id: bytes
-    _public_key: bytes
+    key_id: bytes
+    public_key: bytes
 
     @classmethod
     def from_bytes(cls, data: bytes) -> KeynumPK:
         assert len(data) == KEYNUM_PK_LEN
         buf = Reader(data)
         return cls(
-            _key_id=buf.read(KEY_ID_LEN),
-            _public_key=buf.read(KEY_LEN),
+            key_id=buf.read(KEY_ID_LEN),
+            public_key=buf.read(KEY_LEN),
         )
 
 
@@ -153,7 +155,7 @@ class PublicKey:
     def from_bytes(cls, data: bytes) -> PublicKey:
         lines = data.splitlines()
         if len(lines) < 2:
-            raise Error('incomplete encoded public key')
+            raise ParseError('incomplete encoded public key')
         pk = cls.from_base64(lines[1])
         pk.__dict__['_untrusted_comment'] = lines[0].decode()
         return pk
@@ -168,18 +170,23 @@ class PublicKey:
         return self._untrusted_comment
 
     def verify(self, data: Union[bytes, BinaryIO], signature: Signature):
-        if self._keynum_pk._key_id != signature._key_id:
-            raise Error('incompatible key identifiers')
+        if self._keynum_pk.key_id != signature._key_id:
+            raise VerifyError('incompatible key identifiers')
         if not signature._trusted_comment.startswith(TRUSTED_COMMENT_PREFIX):
-            raise Error('unexpected format for the trusted comment')
-        data = get_data(data, signature._is_prehashed())
+            raise VerifyError('unexpected format for the trusted comment')
         pk = ed25519.Ed25519PublicKey.from_public_bytes(
-            self._keynum_pk._public_key)
-        pk.verify(signature._signature, data)
-        pk.verify(
-            signature._global_signature,
-            signature._signature + signature.trusted_comment.encode(),
-        )
+            self._keynum_pk.public_key)
+        try:
+            pk.verify(
+                signature._signature,
+                read_data(data, signature._is_prehashed()),
+            )
+            pk.verify(
+                signature._global_signature,
+                signature._signature + signature.trusted_comment.encode(),
+            )
+        except InvalidSignature as err:
+            raise VerifyError(err)
 
     def verify_file(self, path: Union[str, os.PathLike], signature: Signature):
         with open(path, 'rb') as f:
@@ -188,15 +195,15 @@ class PublicKey:
     def to_base64(self) -> bytes:
         return base64.standard_b64encode(
             self._signature_algorithm.value +
-            self._keynum_pk._key_id +
-            self._keynum_pk._public_key
+            self._keynum_pk.key_id +
+            self._keynum_pk.public_key
         )
 
     def __bytes__(self) -> bytes:
         buf = io.BytesIO()
         buf.write((
             f'{UNTRUSTED_COMMENT_PREFIX}minisign public key '
-            f'{self._keynum_pk._key_id.hex().upper()}'
+            f'{self._keynum_pk.key_id.hex().upper()}'
             if self._untrusted_comment is None else
             self._untrusted_comment
         ).encode() + b'\n')
@@ -206,44 +213,44 @@ class PublicKey:
 
 @dataclass(frozen=True, repr=False)
 class KeynumSK:
-    _key_id: bytearray
-    _secret_key: bytearray
-    _public_key: bytearray
-    _checksum: bytearray
+    key_id: bytearray
+    secret_key: bytearray
+    public_key: bytearray
+    checksum: bytearray
 
     @classmethod
     def from_bytes(cls, data: bytes) -> KeynumSK:
         buf = Reader(data)
         return cls(
-            _key_id=bytearray(buf.read(KEY_ID_LEN)),
-            _secret_key=bytearray(buf.read(KEY_LEN)),
-            _public_key=bytearray(buf.read(KEY_LEN)),
-            _checksum=bytearray(buf.read(CHECKSUM_LEN)),
+            key_id=bytearray(buf.read(KEY_ID_LEN)),
+            secret_key=bytearray(buf.read(KEY_LEN)),
+            public_key=bytearray(buf.read(KEY_LEN)),
+            checksum=bytearray(buf.read(CHECKSUM_LEN)),
         )
 
     def xor(self, key: bytes):
         assert len(key) == KEYNUM_SK_LEN
         buf = Reader(key)
         for idx, (v1, v2) in enumerate(zip(
-            self._key_id[:],
+            self.key_id[:],
             buf.read(KEY_ID_LEN),
         )):
-            self._key_id[idx] = v1 ^ v2
+            self.key_id[idx] = v1 ^ v2
         for idx, (v1, v2) in enumerate(zip(
-            self._secret_key[:],
+            self.secret_key[:],
             buf.read(KEY_LEN),
         )):
-            self._secret_key[idx] = v1 ^ v2
+            self.secret_key[idx] = v1 ^ v2
         for idx, (v1, v2) in enumerate(zip(
-            self._public_key[:],
+            self.public_key[:],
             buf.read(KEY_LEN),
         )):
-            self._public_key[idx] = v1 ^ v2
+            self.public_key[idx] = v1 ^ v2
         for idx, (v1, v2) in enumerate(zip(
-            self._checksum[:],
+            self.checksum[:],
             buf.read(CHECKSUM_LEN),
         )):
-            self._checksum[idx] = v1 ^ v2
+            self.checksum[idx] = v1 ^ v2
 
 
 @dataclass(frozen=True, repr=False)
@@ -261,7 +268,7 @@ class SecretKey:
     def from_bytes(cls, data: bytes) -> SecretKey:
         lines = data.splitlines()
         if len(lines) < 2:
-            raise Error('incomplete encoded secret key')
+            raise ParseError('incomplete encoded secret key')
         buf = Reader(base64.standard_b64decode(lines[1]))
         return cls(
             _untrusted_comment=lines[0].decode(),
@@ -285,11 +292,11 @@ class SecretKey:
 
     def decrypt(self, password: str):
         self._crypt(password)
-        if self._calc_checksum() != bytes(self._keynum_sk._checksum):
+        if self._calc_checksum() != bytes(self._keynum_sk.checksum):
             raise Error('wrong password for that key')
 
     def encrypt(self, password: str):
-        self._keynum_sk._checksum[0:] = self._calc_checksum()
+        self._keynum_sk.checksum[0:] = self._calc_checksum()
         self._crypt(password)
 
     def _crypt(self, password: str):
@@ -315,7 +322,7 @@ class SecretKey:
             raise Error('n_log2 too high')
         self._keynum_sk.xor(scrypt.Scrypt(
             salt=self._kdf_salt,
-            length=104,
+            length=KEYNUM_SK_LEN,
             n=1 << n_log2,
             r=r,
             p=p,
@@ -327,10 +334,10 @@ class SecretKey:
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
-    ) -> bytes:
-        data = get_data(data, prehash)
+    ) -> Signature:
         untrusted_comment = (
-            f'{UNTRUSTED_COMMENT_PREFIX}signature from minisign secret key'
+            f'{UNTRUSTED_COMMENT_PREFIX}minisign signature '
+            f'{self._keynum_sk.key_id.hex().upper()}'
             if untrusted_comment is None else
             untrusted_comment
         )
@@ -342,20 +349,20 @@ class SecretKey:
         if '\n' in untrusted_comment or '\n' in trusted_comment:
             raise Error('comment contains new line char')
         pk = ed25519.Ed25519PrivateKey.from_private_bytes(
-            self._keynum_sk._secret_key)
-        sig_sig = pk.sign(data)
-        return bytes(Signature(
+            self._keynum_sk.secret_key)
+        sig_sig = pk.sign(read_data(data, prehash))
+        return Signature(
             _untrusted_comment=untrusted_comment,
             _signature_algorithm=(
                 SignatureAlgorithm.PREHASHED_ED_DSA
                 if prehash else
                 SignatureAlgorithm.PURE_ED_DSA
             ),
-            _key_id=self._keynum_sk._key_id,
+            _key_id=self._keynum_sk.key_id,
             _signature=sig_sig,
             _trusted_comment=f'{TRUSTED_COMMENT_PREFIX}{trusted_comment}',
             _global_signature=pk.sign(sig_sig + trusted_comment.encode()),
-        ))
+        )
 
     def sign_file(
         self,
@@ -363,16 +370,16 @@ class SecretKey:
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
-    ) -> bytes:
+    ) -> Signature:
         with open(path, 'rb') as f:
             return self.sign(f, prehash, untrusted_comment, trusted_comment)
 
     def _calc_checksum(self) -> bytes:
         hasher = hashlib.blake2b(digest_size=CHECKSUM_LEN)
         hasher.update(self._signature_algorithm.value)
-        hasher.update(self._keynum_sk._key_id)
-        hasher.update(self._keynum_sk._secret_key)
-        hasher.update(self._keynum_sk._public_key)
+        hasher.update(self._keynum_sk.key_id)
+        hasher.update(self._keynum_sk.secret_key)
+        hasher.update(self._keynum_sk.public_key)
         return hasher.digest()
 
     def __bytes__(self) -> bytes:
@@ -385,10 +392,10 @@ class SecretKey:
             self._kdf_salt +
             self._kdf_opslimit +
             self._kdf_memlimit +
-            bytes(self._keynum_sk._key_id) +
-            bytes(self._keynum_sk._secret_key) +
-            bytes(self._keynum_sk._public_key) +
-            bytes(self._keynum_sk._checksum)
+            bytes(self._keynum_sk.key_id) +
+            bytes(self._keynum_sk.secret_key) +
+            bytes(self._keynum_sk.public_key) +
+            bytes(self._keynum_sk.checksum)
         ))
         return buf.getvalue()
 
@@ -409,7 +416,8 @@ class KeyPair:
         return cls(
             secret_key=SecretKey(
                 _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
-                                   f'minisign secret key',
+                                   f'minisign secret key '
+                                   f'{key_id.hex().upper()}',
                 _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
                 _kdf_algorithm=KDFAlgorithm.SCRYPT,
                 _cksum_algorithm=CksumAlgorithm.BLAKE2b,
@@ -423,22 +431,22 @@ class KeyPair:
                     byteorder='little',
                 ),
                 _keynum_sk=KeynumSK(
-                    _key_id=bytearray(key_id),
-                    _secret_key=bytearray(sk.private_bytes(
+                    key_id=bytearray(key_id),
+                    secret_key=bytearray(sk.private_bytes(
                         encoding=serialization.Encoding.Raw,
                         format=serialization.PrivateFormat.Raw,
                         encryption_algorithm=serialization.NoEncryption(),
                     )),
-                    _public_key=bytearray(public_key),
-                    _checksum=bytearray(),
+                    public_key=bytearray(public_key),
+                    checksum=bytearray(CHECKSUM_LEN),
                 ),
             ),
             public_key=PublicKey(
                 _untrusted_comment=None,
                 _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
                 _keynum_pk=KeynumPK(
-                    _key_id=key_id,
-                    _public_key=public_key,
+                    key_id=key_id,
+                    public_key=public_key,
                 ),
             ),
         )
