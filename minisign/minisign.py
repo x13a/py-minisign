@@ -339,6 +339,7 @@ class SecretKey:
     def sign(
         self,
         data: Union[bytes, BinaryIO],
+        *,
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
@@ -375,12 +376,18 @@ class SecretKey:
     def sign_file(
         self,
         path: Union[str, os.PathLike],
+        *,
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
     ) -> Signature:
         with open(path, 'rb') as f:
-            return self.sign(f, prehash, untrusted_comment, trusted_comment)
+            return self.sign(
+                f,
+                prehash=prehash,
+                untrusted_comment=untrusted_comment,
+                trusted_comment=trusted_comment,
+            )
 
     def _calc_checksum(self) -> bytes:
         hasher = hashlib.blake2b(digest_size=CHECKSUM_LEN)

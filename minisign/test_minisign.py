@@ -1,4 +1,5 @@
 import copy
+import io
 import secrets
 import unittest
 
@@ -86,3 +87,7 @@ class MinisignTestCase(unittest.TestCase):
         data = b'very important data'
         kp.public_key.verify(data, kp.secret_key.sign(data))
         kp.public_key.verify(data, kp.secret_key.sign(data, prehash=True))
+        kp.public_key.verify(
+            io.BytesIO(data),
+            kp.secret_key.sign(io.BytesIO(data), prehash=True),
+        )
