@@ -160,13 +160,27 @@ class PublicKey:
         if len(lines) < 2:
             raise ParseError('incomplete encoded public key')
         pk = cls.from_base64(lines[1])
-        pk.__dict__['_untrusted_comment'] = lines[0].decode()
+        pk.set_untrusted_comment(lines[0].decode())
         return pk
 
     @classmethod
     def from_file(cls, path: Union[str, os.PathLike]) -> PublicKey:
         with open(path, 'rb') as f:
             return cls.from_bytes(f.read())
+
+    @classmethod
+    def from_secret_key(cls, secret_key: SecretKey) -> PublicKey:
+        key_id = bytes(secret_key._keynum_sk.key_id)
+        return cls(
+            _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
+                               f'minisign public key '
+                               f'{key_id.hex().upper()}',
+            _signature_algorithm=secret_key._signature_algorithm,
+            _keynum_pk=KeynumPK(
+                key_id=key_id,
+                public_key=bytes(secret_key._keynum_sk.public_key),
+            ),
+        )
 
     @property
     def untrusted_comment(self) -> Optional[str]:
@@ -299,6 +313,9 @@ class SecretKey:
     def set_untrusted_comment(self, value: str):
         self.__dict__['_untrusted_comment'] = value
 
+    def get_public_key(self) -> PublicKey:
+        return PublicKey.from_secret_key(self)
+
     def decrypt(self, password: str):
         self._crypt(password)
         if self._calc_checksum() != bytes(self._keynum_sk.checksum):
@@ -423,10 +440,6 @@ class KeyPair:
     @classmethod
     def generate(cls) -> KeyPair:
         private_key = ed25519.Ed25519PrivateKey.generate()
-        public_key = private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw,
-        )
         key_id = secrets.token_bytes(KEY_ID_LEN)
         sk = SecretKey(
             _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
@@ -451,21 +464,12 @@ class KeyPair:
                     format=serialization.PrivateFormat.Raw,
                     encryption_algorithm=serialization.NoEncryption(),
                 )),
-                public_key=bytearray(public_key),
+                public_key=bytearray(private_key.public_key().public_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PublicFormat.Raw,
+                )),
                 checksum=bytearray(CHECKSUM_LEN),
             ),
         )
         sk._keynum_sk.checksum[0:] = sk._calc_checksum()
-        return cls(
-            secret_key=sk,
-            public_key=PublicKey(
-                _untrusted_comment=f'{UNTRUSTED_COMMENT_PREFIX}'
-                                   f'minisign public key '
-                                   f'{key_id.hex().upper()}',
-                _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
-                _keynum_pk=KeynumPK(
-                    key_id=key_id,
-                    public_key=public_key,
-                ),
-            ),
-        )
+        return cls(secret_key=sk, public_key=PublicKey.from_secret_key(sk))
