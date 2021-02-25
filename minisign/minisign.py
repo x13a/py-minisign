@@ -44,6 +44,7 @@ SIG_LEN = 64
 KEYNUM_PK_LEN = 40
 KEYNUM_SK_LEN = 104
 
+SIG_EXT = 'minisig'
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
 TRUSTED_COMMENT_PREFIX = 'trusted comment: '
 TRUSTED_COMMENT_PREFIX_LEN = len(TRUSTED_COMMENT_PREFIX)
@@ -208,7 +209,13 @@ class PublicKey:
         except InvalidSignature as err:
             raise VerifyError(err)
 
-    def verify_file(self, path: Union[str, os.PathLike], signature: Signature):
+    def verify_file(
+        self,
+        path: Union[str, os.PathLike],
+        signature: Optional[Signature] = None,
+    ):
+        if signature is None:
+            signature = Signature.from_file(f'{path}.{SIG_EXT}')
         with open(path, 'rb') as f:
             self.verify(f, signature)
 
@@ -397,14 +404,19 @@ class SecretKey:
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
+        drop_signature: bool = False,
     ) -> Signature:
         with open(path, 'rb') as f:
-            return self.sign(
+            sig = self.sign(
                 f,
                 prehash=prehash,
                 untrusted_comment=untrusted_comment,
                 trusted_comment=trusted_comment,
             )
+        if drop_signature:
+            with open(f'{path}.{SIG_EXT}', 'wb') as f1:
+                f1.write(bytes(sig))
+        return sig
 
     def _calc_checksum(self) -> bytes:
         hasher = hashlib.blake2b(digest_size=CHECKSUM_LEN)
