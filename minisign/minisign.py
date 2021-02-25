@@ -13,6 +13,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from typing import (
+    BinaryIO,
     Optional,
     Union,
 )
@@ -190,11 +191,7 @@ class PublicKey:
     def set_untrusted_comment(self, value: Optional[str]):
         self.__dict__['_untrusted_comment'] = value
 
-    def verify(
-        self,
-        data: Union[bytes, io.BufferedIOBase],
-        signature: Signature,
-    ):
+    def verify(self, data: Union[bytes, BinaryIO], signature: Signature):
         if self._keynum_pk.key_id != signature._key_id:
             raise VerifyError('incompatible key identifiers')
         if not signature._trusted_comment.startswith(TRUSTED_COMMENT_PREFIX):
@@ -368,7 +365,7 @@ class SecretKey:
 
     def sign(
         self,
-        data: Union[bytes, io.BufferedIOBase],
+        data: Union[bytes, BinaryIO],
         *,
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,

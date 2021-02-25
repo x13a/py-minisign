@@ -1,6 +1,9 @@
 import hashlib
 import io
-from typing import Union
+from typing import (
+    BinaryIO,
+    Union,
+)
 
 from .exceptions import ParseError
 
@@ -22,7 +25,7 @@ class Reader:
         return data
 
 
-def read_data(data: Union[bytes, io.BufferedIOBase], prehash: bool) -> bytes:
+def read_data(data: Union[bytes, BinaryIO], prehash: bool) -> bytes:
     if prehash:
         if isinstance(data, io.BufferedIOBase):
             hasher = hashlib.blake2b()
