@@ -290,8 +290,8 @@ class SecretKey:
     _kdf_algorithm: KDFAlgorithm
     _cksum_algorithm: CksumAlgorithm
     _kdf_salt: bytes
-    _kdf_opslimit: bytes
-    _kdf_memlimit: bytes
+    _kdf_opslimit: int
+    _kdf_memlimit: int
     _keynum_sk: KeynumSK
 
     @classmethod
@@ -306,8 +306,8 @@ class SecretKey:
             _kdf_algorithm=KDFAlgorithm(buf.read(ALG_LEN)),
             _cksum_algorithm=CksumAlgorithm(buf.read(ALG_LEN)),
             _kdf_salt=buf.read(SALT_LEN),
-            _kdf_opslimit=buf.read(KDF_PARAM_LEN),
-            _kdf_memlimit=buf.read(KDF_PARAM_LEN),
+            _kdf_opslimit=int.from_bytes(buf.read(KDF_PARAM_LEN), 'little'),
+            _kdf_memlimit=int.from_bytes(buf.read(KDF_PARAM_LEN), 'little'),
             _keynum_sk=KeynumSK.from_bytes(buf),
         )
 
@@ -335,18 +335,17 @@ class SecretKey:
         self._crypt(password)
 
     def _crypt(self, password: str):
-        memlimit = int.from_bytes(self._kdf_memlimit, 'little')
-        if memlimit > 1_073_741_824:
+        if self._kdf_memlimit > 1_073_741_824:
             raise Error('memlimit too high')
-        opslimit = max(32768, int.from_bytes(self._kdf_opslimit, 'little'))
+        opslimit = max(32768, self._kdf_opslimit)
         n_log2 = 1
         r = 8
         p = 0
-        if opslimit < memlimit // 32:
+        if opslimit < self._kdf_memlimit // 32:
             maxn = opslimit // (r * 4)
             p = 1
         else:
-            maxn = memlimit // (r * 128)
+            maxn = self._kdf_memlimit // (r * 128)
         while n_log2 < 63:
             if 1 << n_log2 > maxn // 2:
                 break
@@ -437,8 +436,8 @@ class SecretKey:
             self._kdf_algorithm.value +
             self._cksum_algorithm.value +
             self._kdf_salt +
-            self._kdf_opslimit +
-            self._kdf_memlimit +
+            self._kdf_opslimit.to_bytes(KDF_PARAM_LEN, byteorder='little') +
+            self._kdf_memlimit.to_bytes(KDF_PARAM_LEN, byteorder='little') +
             bytes(self._keynum_sk.key_id) +
             bytes(self._keynum_sk.secret_key) +
             bytes(self._keynum_sk.public_key) +
@@ -464,14 +463,8 @@ class KeyPair:
             _kdf_algorithm=KDFAlgorithm.SCRYPT,
             _cksum_algorithm=CksumAlgorithm.BLAKE2b,
             _kdf_salt=secrets.token_bytes(SALT_LEN),
-            _kdf_opslimit=(1_048_576).to_bytes(
-                KDF_PARAM_LEN,
-                byteorder='little',
-            ),
-            _kdf_memlimit=(33_554_432).to_bytes(
-                KDF_PARAM_LEN,
-                byteorder='little',
-            ),
+            _kdf_opslimit=1_048_576,
+            _kdf_memlimit=33_554_432,
             _keynum_sk=KeynumSK(
                 key_id=bytearray(key_id),
                 secret_key=bytearray(private_key.private_bytes(
