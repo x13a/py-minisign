@@ -1,9 +1,6 @@
 import hashlib
 import io
-from typing import (
-    BinaryIO,
-    Union,
-)
+from typing import Union
 
 from .exceptions import ParseError
 
@@ -12,6 +9,9 @@ class Reader:
     def __init__(self, data: bytes):
         self._buf = data
         self._pos = 0
+
+    def __len__(self) -> int:
+        return len(self._buf) - self._pos
 
     def read(self, size: int) -> bytes:
         pos = self._pos + size
@@ -22,7 +22,7 @@ class Reader:
         return data
 
 
-def read_data(data: Union[bytes, BinaryIO], prehash: bool) -> bytes:
+def read_data(data: Union[bytes, io.BufferedIOBase], prehash: bool) -> bytes:
     if prehash:
         if isinstance(data, io.BufferedIOBase):
             hasher = hashlib.blake2b()

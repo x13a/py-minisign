@@ -13,7 +13,6 @@ import secrets
 import time
 from dataclasses import dataclass
 from typing import (
-    BinaryIO,
     Optional,
     Union,
 )
@@ -131,12 +130,13 @@ class KeynumPK:
     public_key: bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> KeynumPK:
+    def from_bytes(cls, data: Union[bytes, Reader]) -> KeynumPK:
         assert len(data) == KEYNUM_PK_LEN
-        buf = Reader(data)
+        if isinstance(data, bytes):
+            data = Reader(data)
         return cls(
-            key_id=buf.read(KEY_ID_LEN),
-            public_key=buf.read(KEY_LEN),
+            key_id=data.read(KEY_ID_LEN),
+            public_key=data.read(KEY_LEN),
         )
 
 
@@ -152,7 +152,7 @@ class PublicKey:
         return cls(
             _untrusted_comment=None,
             _signature_algorithm=SignatureAlgorithm(buf.read(ALG_LEN)),
-            _keynum_pk=KeynumPK.from_bytes(buf.read(KEYNUM_PK_LEN)),
+            _keynum_pk=KeynumPK.from_bytes(buf),
         )
 
     @classmethod
@@ -190,7 +190,11 @@ class PublicKey:
     def set_untrusted_comment(self, value: Optional[str]):
         self.__dict__['_untrusted_comment'] = value
 
-    def verify(self, data: Union[bytes, BinaryIO], signature: Signature):
+    def verify(
+        self,
+        data: Union[bytes, io.BufferedIOBase],
+        signature: Signature,
+    ):
         if self._keynum_pk.key_id != signature._key_id:
             raise VerifyError('incompatible key identifiers')
         if not signature._trusted_comment.startswith(TRUSTED_COMMENT_PREFIX):
@@ -246,13 +250,15 @@ class KeynumSK:
     checksum: bytearray
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> KeynumSK:
-        buf = Reader(data)
+    def from_bytes(cls, data: Union[bytes, Reader]) -> KeynumSK:
+        assert len(data) == KEYNUM_SK_LEN
+        if isinstance(data, bytes):
+            data = Reader(data)
         return cls(
-            key_id=bytearray(buf.read(KEY_ID_LEN)),
-            secret_key=bytearray(buf.read(KEY_LEN)),
-            public_key=bytearray(buf.read(KEY_LEN)),
-            checksum=bytearray(buf.read(CHECKSUM_LEN)),
+            key_id=bytearray(data.read(KEY_ID_LEN)),
+            secret_key=bytearray(data.read(KEY_LEN)),
+            public_key=bytearray(data.read(KEY_LEN)),
+            checksum=bytearray(data.read(CHECKSUM_LEN)),
         )
 
     def xor(self, key: bytes):
@@ -305,7 +311,7 @@ class SecretKey:
             _kdf_salt=buf.read(SALT_LEN),
             _kdf_opslimit=buf.read(KDF_PARAM_LEN),
             _kdf_memlimit=buf.read(KDF_PARAM_LEN),
-            _keynum_sk=KeynumSK.from_bytes(buf.read(KEYNUM_SK_LEN)),
+            _keynum_sk=KeynumSK.from_bytes(buf),
         )
 
     @classmethod
@@ -362,7 +368,7 @@ class SecretKey:
 
     def sign(
         self,
-        data: Union[bytes, BinaryIO],
+        data: Union[bytes, io.BufferedIOBase],
         *,
         prehash: bool = False,
         untrusted_comment: Optional[str] = None,

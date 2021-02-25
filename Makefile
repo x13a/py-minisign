@@ -10,6 +10,7 @@ define make_venv
 	python3 -m venv --prompt $(NAME) $(1)
 	( \
 		source $(1)/bin/activate; \
+		pip install -U pip; \
 		pip install -U "."; \
 		deactivate; \
 	)
