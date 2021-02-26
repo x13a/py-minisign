@@ -7,7 +7,6 @@ from __future__ import annotations
 import base64
 import enum
 import hashlib
-import io
 import os
 import secrets
 import time
@@ -45,6 +44,7 @@ KEYNUM_PK_LEN = 40
 KEYNUM_SK_LEN = 104
 
 SIG_EXT = 'minisig'
+BYTE_ORDER = 'little'
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
 TRUSTED_COMMENT_PREFIX = 'trusted comment: '
 TRUSTED_COMMENT_PREFIX_LEN = len(TRUSTED_COMMENT_PREFIX)
@@ -110,16 +110,16 @@ class Signature:
         return self._trusted_comment[TRUSTED_COMMENT_PREFIX_LEN:]
 
     def __bytes__(self) -> bytes:
-        buf = io.BytesIO()
-        buf.write(self._untrusted_comment.encode() + b'\n')
-        buf.write(base64.standard_b64encode(
-            self._signature_algorithm.value +
-            self._key_id +
-            self._signature
-        ) + b'\n')
-        buf.write(self._trusted_comment.encode() + b'\n')
-        buf.write(base64.standard_b64encode(self._global_signature) + b'\n')
-        return buf.getvalue()
+        return b'\n'.join([
+            self._untrusted_comment.encode(),
+            base64.standard_b64encode(
+                self._signature_algorithm.value +
+                self._key_id +
+                self._signature
+            ),
+            self._trusted_comment.encode(),
+            base64.standard_b64encode(self._global_signature),
+        ])
 
     def _is_prehashed(self) -> bool:
         return self._signature_algorithm == SignatureAlgorithm.PREHASHED_ED_DSA
@@ -228,15 +228,15 @@ class PublicKey:
         )
 
     def __bytes__(self) -> bytes:
-        buf = io.BytesIO()
-        buf.write((
-            f'{UNTRUSTED_COMMENT_PREFIX}minisign public key '
-            f'{self._keynum_pk.key_id.hex().upper()}'
-            if self._untrusted_comment is None else
-            self._untrusted_comment
-        ).encode() + b'\n')
-        buf.write(self.to_base64() + b'\n')
-        return buf.getvalue()
+        return b'\n'.join([
+            (
+                f'{UNTRUSTED_COMMENT_PREFIX}minisign public key '
+                f'{self._keynum_pk.key_id.hex().upper()}'
+                if self._untrusted_comment is None else
+                self._untrusted_comment
+            ).encode(),
+            self.to_base64(),
+        ])
 
 
 @dataclass(frozen=True, repr=False)
@@ -306,8 +306,8 @@ class SecretKey:
             _kdf_algorithm=KDFAlgorithm(buf.read(ALG_LEN)),
             _cksum_algorithm=CksumAlgorithm(buf.read(ALG_LEN)),
             _kdf_salt=buf.read(SALT_LEN),
-            _kdf_opslimit=int.from_bytes(buf.read(KDF_PARAM_LEN), 'little'),
-            _kdf_memlimit=int.from_bytes(buf.read(KDF_PARAM_LEN), 'little'),
+            _kdf_opslimit=int.from_bytes(buf.read(KDF_PARAM_LEN), BYTE_ORDER),
+            _kdf_memlimit=int.from_bytes(buf.read(KDF_PARAM_LEN), BYTE_ORDER),
             _keynum_sk=KeynumSK.from_bytes(buf),
         )
 
@@ -418,6 +418,7 @@ class SecretKey:
         if drop_signature:
             with open(f'{path}.{SIG_EXT}', 'wb') as f1:
                 f1.write(bytes(sig))
+                f1.write(b'\n')
         return sig
 
     def _calc_checksum(self) -> bytes:
@@ -429,21 +430,21 @@ class SecretKey:
         return hasher.digest()
 
     def __bytes__(self) -> bytes:
-        buf = io.BytesIO()
-        buf.write(self._untrusted_comment.encode() + b'\n')
-        buf.write(base64.standard_b64encode(
-            self._signature_algorithm.value +
-            self._kdf_algorithm.value +
-            self._cksum_algorithm.value +
-            self._kdf_salt +
-            self._kdf_opslimit.to_bytes(KDF_PARAM_LEN, byteorder='little') +
-            self._kdf_memlimit.to_bytes(KDF_PARAM_LEN, byteorder='little') +
-            bytes(self._keynum_sk.key_id) +
-            bytes(self._keynum_sk.secret_key) +
-            bytes(self._keynum_sk.public_key) +
-            bytes(self._keynum_sk.checksum)
-        ) + b'\n')
-        return buf.getvalue()
+        return b'\n'.join([
+            self._untrusted_comment.encode(),
+            base64.standard_b64encode(
+                self._signature_algorithm.value +
+                self._kdf_algorithm.value +
+                self._cksum_algorithm.value +
+                self._kdf_salt +
+                self._kdf_opslimit.to_bytes(KDF_PARAM_LEN, BYTE_ORDER) +
+                self._kdf_memlimit.to_bytes(KDF_PARAM_LEN, BYTE_ORDER) +
+                bytes(self._keynum_sk.key_id) +
+                bytes(self._keynum_sk.secret_key) +
+                bytes(self._keynum_sk.public_key) +
+                bytes(self._keynum_sk.checksum)
+            ),
+        ])
 
 
 @dataclass(frozen=True, repr=False)
