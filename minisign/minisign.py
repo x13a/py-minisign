@@ -40,8 +40,8 @@ SALT_LEN = 32
 CHECKSUM_LEN = 32
 SIG_LEN = 64
 
-KEYNUM_PK_LEN = 40
-KEYNUM_SK_LEN = 104
+KEYNUM_PK_LEN = KEY_ID_LEN + KEY_LEN
+KEYNUM_SK_LEN = KEY_ID_LEN + (KEY_LEN << 1) + CHECKSUM_LEN
 
 SIG_EXT = 'minisig'
 BYTE_ORDER = 'little'
@@ -110,7 +110,7 @@ class Signature:
         return self._trusted_comment[TRUSTED_COMMENT_PREFIX_LEN:]
 
     def __bytes__(self) -> bytes:
-        return b'\n'.join([
+        return b'\n'.join((
             self._untrusted_comment.encode(),
             base64.standard_b64encode(
                 self._signature_algorithm.value +
@@ -119,7 +119,7 @@ class Signature:
             ),
             self._trusted_comment.encode(),
             base64.standard_b64encode(self._global_signature),
-        ])
+        ))
 
     def _is_prehashed(self) -> bool:
         return self._signature_algorithm == SignatureAlgorithm.PREHASHED_ED_DSA
@@ -228,7 +228,7 @@ class PublicKey:
         )
 
     def __bytes__(self) -> bytes:
-        return b'\n'.join([
+        return b'\n'.join((
             (
                 f'{UNTRUSTED_COMMENT_PREFIX}minisign public key '
                 f'{self._keynum_pk.key_id.hex().upper()}'
@@ -236,7 +236,7 @@ class PublicKey:
                 self._untrusted_comment
             ).encode(),
             self.to_base64(),
-        ])
+        ))
 
 
 @dataclass(frozen=True, repr=False)
@@ -261,26 +261,14 @@ class KeynumSK:
     def xor(self, key: bytes):
         assert len(key) == KEYNUM_SK_LEN
         buf = Reader(key)
-        for idx, (v1, v2) in enumerate(zip(
-            self.key_id[:],
-            buf.read(KEY_ID_LEN),
-        )):
-            self.key_id[idx] = v1 ^ v2
-        for idx, (v1, v2) in enumerate(zip(
-            self.secret_key[:],
-            buf.read(KEY_LEN),
-        )):
-            self.secret_key[idx] = v1 ^ v2
-        for idx, (v1, v2) in enumerate(zip(
-            self.public_key[:],
-            buf.read(KEY_LEN),
-        )):
-            self.public_key[idx] = v1 ^ v2
-        for idx, (v1, v2) in enumerate(zip(
-            self.checksum[:],
-            buf.read(CHECKSUM_LEN),
-        )):
-            self.checksum[idx] = v1 ^ v2
+        for (l, size) in (
+            (self.key_id, KEY_ID_LEN),
+            (self.secret_key, KEY_LEN),
+            (self.public_key, KEY_LEN),
+            (self.checksum, CHECKSUM_LEN),
+        ):
+            for idx, (v1, v2) in enumerate(zip(l[:], buf.read(size))):
+                l[idx] = v1 ^ v2
 
 
 @dataclass(frozen=True, repr=False)
@@ -430,7 +418,7 @@ class SecretKey:
         return hasher.digest()
 
     def __bytes__(self) -> bytes:
-        return b'\n'.join([
+        return b'\n'.join((
             self._untrusted_comment.encode(),
             base64.standard_b64encode(
                 self._signature_algorithm.value +
@@ -444,7 +432,7 @@ class SecretKey:
                 bytes(self._keynum_sk.public_key) +
                 bytes(self._keynum_sk.checksum)
             ),
-        ])
+        ))
 
 
 @dataclass(frozen=True, repr=False)
