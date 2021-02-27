@@ -29,6 +29,7 @@ from .exceptions import (
 )
 from .helpers import (
     Reader,
+    check_comment,
     read_data,
 )
 
@@ -103,6 +104,7 @@ class Signature:
         return self._untrusted_comment
 
     def set_untrusted_comment(self, value: str):
+        check_comment(value)
         self.__dict__['_untrusted_comment'] = value
 
     @property
@@ -189,6 +191,7 @@ class PublicKey:
         return self._untrusted_comment
 
     def set_untrusted_comment(self, value: Optional[str]):
+        check_comment(value)
         self.__dict__['_untrusted_comment'] = value
 
     def verify(self, data: Union[bytes, BinaryIO], signature: Signature):
@@ -309,6 +312,7 @@ class SecretKey:
         return self._untrusted_comment
 
     def set_untrusted_comment(self, value: str):
+        check_comment(value)
         self.__dict__['_untrusted_comment'] = value
 
     def get_public_key(self) -> PublicKey:
@@ -364,13 +368,13 @@ class SecretKey:
             if untrusted_comment is None else
             untrusted_comment
         )
+        check_comment(untrusted_comment)
         trusted_comment = (
             f'timestamp:{int(time.time())}'
             if trusted_comment is None else
             trusted_comment
         )
-        if '\n' in untrusted_comment or '\n' in trusted_comment:
-            raise Error('comment contains new line char')
+        check_comment(trusted_comment)
         pk = ed25519.Ed25519PrivateKey.from_private_bytes(
             self._keynum_sk.secret_key)
         sig_sig = pk.sign(read_data(data, prehash))

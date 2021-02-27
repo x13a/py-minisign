@@ -5,7 +5,10 @@ from typing import (
     Union,
 )
 
-from .exceptions import ParseError
+from .exceptions import (
+    Error,
+    ParseError,
+)
 
 
 class Reader:
@@ -37,3 +40,8 @@ def read_data(data: Union[bytes, BinaryIO], prehash: bool) -> bytes:
     elif isinstance(data, io.BufferedIOBase):
         data = data.read()
     return data
+
+
+def check_comment(s: str):
+    if '\n' in s:
+        raise Error('comment contains new line char')
