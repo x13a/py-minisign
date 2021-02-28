@@ -45,6 +45,11 @@ SIG_LEN = 64
 KEYNUM_PK_LEN = KEY_ID_LEN + KEY_LEN
 KEYNUM_SK_LEN = KEY_ID_LEN + (KEY_LEN << 1) + CHECKSUM_LEN
 
+OPSLIMIT = 1_048_576
+MEMLIMIT = 33_554_432
+MEMLIMIT_MAX = 1_073_741_824
+N_LOG2_MAX = 20
+
 SIG_EXT = 'minisig'
 BYTE_ORDER = 'little'
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
@@ -334,7 +339,7 @@ class SecretKey:
         self._crypt(password)
 
     def _crypt(self, password: str):
-        if self._kdf_memlimit > 1_073_741_824:
+        if self._kdf_memlimit > MEMLIMIT_MAX:
             raise Error('memlimit too high')
         opslimit = max(32768, self._kdf_opslimit)
         n_log2 = 1
@@ -351,7 +356,7 @@ class SecretKey:
             n_log2 += 1
         if not p:
             p = min(0x3fffffff, (opslimit // 4) // (1 << n_log2)) // r
-        if n_log2 > 20:
+        if n_log2 > N_LOG2_MAX:
             raise Error('n_log2 too high')
         self._keynum_sk.xor(scrypt.Scrypt(
             salt=self._kdf_salt,
@@ -466,8 +471,8 @@ class KeyPair:
             _kdf_algorithm=KDFAlgorithm.SCRYPT,
             _cksum_algorithm=CksumAlgorithm.BLAKE2b,
             _kdf_salt=secrets.token_bytes(SALT_LEN),
-            _kdf_opslimit=1_048_576,
-            _kdf_memlimit=33_554_432,
+            _kdf_opslimit=OPSLIMIT,
+            _kdf_memlimit=MEMLIMIT,
             _keynum_sk=KeynumSK(
                 key_id=bytearray(key_id),
                 secret_key=bytearray(private_key.private_bytes(
