@@ -8,6 +8,7 @@ Library
 
 .. code:: python
 
+    import os
     import minisign
 
     # verify
@@ -37,5 +38,5 @@ Library
     # save key
 
     sk.encrypt('strong_password')
-    with open('/path/to/secret.key', 'wb') as f:
+    with open(os.open('/path/to/secret.key', os.O_CREAT | os.O_WRONLY, 0o600), 'wb') as f:
         f.write(bytes(sk))
