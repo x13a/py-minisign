@@ -52,6 +52,8 @@ N_LOG2_MAX = 20
 
 SIG_EXT = 'minisig'
 BYTE_ORDER = 'little'
+DEFAULT_SK_PATH = '~/.minisign/minisign.key'
+
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
 TRUSTED_COMMENT_PREFIX = 'trusted comment: '
 TRUSTED_COMMENT_PREFIX_LEN = len(TRUSTED_COMMENT_PREFIX)
@@ -314,8 +316,7 @@ class SecretKey:
         path: Optional[Union[str, os.PathLike]] = None,
     ) -> SecretKey:
         if path is None:
-            path = Path(
-                '~/.minisign/minisign.key').expanduser().resolve(strict=True)
+            path = Path(DEFAULT_SK_PATH).expanduser().resolve(strict=True)
         with open(path, 'rb') as f:
             return cls.from_bytes(f.read())
 
