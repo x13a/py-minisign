@@ -11,6 +11,7 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import (
     BinaryIO,
     Optional,
@@ -303,7 +304,13 @@ class SecretKey:
         )
 
     @classmethod
-    def from_file(cls, path: Union[os.PathLike, str]) -> SecretKey:
+    def from_file(
+        cls,
+        path: Optional[Union[str, os.PathLike]] = None,
+    ) -> SecretKey:
+        if path is None:
+            path = Path(
+                '~/.minisign/minisign.key').expanduser().resolve(strict=True)
         with open(path, 'rb') as f:
             return cls.from_bytes(f.read())
 
@@ -421,6 +428,9 @@ class SecretKey:
         hasher.update(self._keynum_sk.public_key)
         return hasher.digest()
 
+    def _update_checksum(self):
+        self._keynum_sk.checksum[0:] = self._calc_checksum()
+
     def __bytes__(self) -> bytes:
         return b'\n'.join((
             self._untrusted_comment.encode(),
@@ -472,5 +482,5 @@ class KeyPair:
                 checksum=bytearray(CHECKSUM_LEN),
             ),
         )
-        sk._keynum_sk.checksum[0:] = sk._calc_checksum()
+        sk._update_checksum()
         return cls(secret_key=sk, public_key=PublicKey.from_secret_key(sk))
