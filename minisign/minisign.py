@@ -150,6 +150,9 @@ class KeynumPK:
             public_key=data.read(KEY_LEN),
         )
 
+    def __bytes__(self) -> bytes:
+        return self.key_id + self.public_key
+
 
 @dataclass(frozen=True)
 class PublicKey:
@@ -234,8 +237,7 @@ class PublicKey:
     def to_base64(self) -> bytes:
         return base64.standard_b64encode(
             self._signature_algorithm.value +
-            self._keynum_pk.key_id +
-            self._keynum_pk.public_key
+            bytes(self._keynum_pk)
         )
 
     def __bytes__(self) -> bytes:
@@ -280,6 +282,14 @@ class KeynumSK:
         ):
             for idx, (v1, v2) in enumerate(zip(l[:], buf.read(size))):
                 l[idx] = v1 ^ v2
+
+    def __bytes__(self) -> bytes:
+        return (
+            bytes(self.key_id) +
+            bytes(self.secret_key) +
+            bytes(self.public_key) +
+            bytes(self.checksum)
+        )
 
 
 @dataclass(frozen=True, repr=False)
@@ -447,10 +457,7 @@ class SecretKey:
                 self._kdf_salt +
                 self._kdf_opslimit.to_bytes(KDF_PARAM_LEN, BYTE_ORDER) +
                 self._kdf_memlimit.to_bytes(KDF_PARAM_LEN, BYTE_ORDER) +
-                bytes(self._keynum_sk.key_id) +
-                bytes(self._keynum_sk.secret_key) +
-                bytes(self._keynum_sk.public_key) +
-                bytes(self._keynum_sk.checksum)
+                bytes(self._keynum_sk)
             ),
         ))
 
