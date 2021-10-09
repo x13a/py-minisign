@@ -381,7 +381,7 @@ class SecretKey:
         self,
         data: Union[bytes, BinaryIO],
         *,
-        prehash: bool = False,
+        prehash: bool = True,
         untrusted_comment: Optional[str] = None,
         trusted_comment: Optional[str] = None,
     ) -> Signature:
