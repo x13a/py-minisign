@@ -1,6 +1,7 @@
 .PHONY: venv
+
 NAME    := minisign
-venvdir := ./venv
+VENVDIR := ./venv
 
 all: venv
 
@@ -15,14 +16,14 @@ define make_venv
 endef
 
 venv:
-	$(call make_venv,$(venvdir))
+	$(call make_venv,$(VENVDIR))
 
 clean:
-	rm -rf $(venvdir)/
+	rm -rf $(VENVDIR)/
 	rm -rf ./build/
 	rm -rf ./dist/
-	rm -rf ./minisign.egg-info/
-	rm -rf ./py_minisign.egg-info/
+	rm -rf ./$(NAME).egg-info/
+	rm -rf ./py_$(NAME).egg-info/
 
 test:
 	python3 -m unittest
