@@ -1,7 +1,5 @@
 .PHONY: venv
-
 NAME    := minisign
-
 venvdir := ./venv
 
 all: venv
@@ -21,6 +19,10 @@ venv:
 
 clean:
 	rm -rf $(venvdir)/
+	rm -rf ./build/
+	rm -rf ./dist/
+	rm -rf ./minisign.egg-info/
+	rm -rf ./py_minisign.egg-info/
 
 test:
 	python3 -m unittest

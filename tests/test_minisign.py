@@ -3,7 +3,7 @@ import io
 import secrets
 import unittest
 
-from .minisign import (
+from minisign.minisign import (
     KEYNUM_SK_LEN,
     KeyPair,
     PublicKey,
@@ -13,7 +13,6 @@ from .minisign import (
 
 
 class MinisignTestCase(unittest.TestCase):
-
     def test_verify_pure(self):
         sig = Signature.from_bytes(
             b'untrusted comment: signature from minisign secret key\n'

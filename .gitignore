@@ -1,3 +1,5 @@
 /venv/
+/dist/
 /build/
 /minisign.egg-info/
+/py_minisign.egg-info/

@@ -1,6 +1,30 @@
-[build-system]
-requires = [
-  "setuptools >= 40.9.0",
-  "wheel",
+[project]
+name = "py-minisign"
+dynamic = ["version"]
+authors = [
+  { name = "Frank Denis" },
+  { name = "lucky" },
 ]
+description = "Python minisign library"
+readme = "README.rst"
+requires-python = ">= 3.8"
+dependencies = [
+  "cryptography >= 43.0.1",
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/x13a/py-minisign"
+Issues = "https://github.com/x13a/py-minisign/issues"
+
+[build-system]
+requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = { attr = "minisign.__version__" }
