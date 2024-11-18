@@ -3,6 +3,13 @@ py-minisign
 
 Missing python `minisign <https://github.com/jedisct1/minisign>`_ library.
 
+Install
+-------
+
+.. code:: shell
+
+    pip install py-minisign
+
 Library
 -------
 
