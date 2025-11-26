@@ -10,12 +10,14 @@ on:
       - '**.py'
       - 'requirements.txt'
       - 'pyproject.toml'
+      - '.github/workflows/python-package.yml'
   pull_request:
     branches: [ master ]
     paths:
       - '**.py'
       - 'requirements.txt'
       - 'pyproject.toml'
+      - '.github/workflows/python-package.yml'
 
 jobs:
   build:
