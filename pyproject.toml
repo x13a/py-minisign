@@ -9,12 +9,12 @@ description = "Python minisign library"
 readme = "README.rst"
 requires-python = ">= 3.8"
 dependencies = [
-  "cryptography >= 43.0.1",
+  "cryptography >= 46.0.3",
 ]
+license = "MIT"
 
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 

@@ -3,3 +3,4 @@
 /build/
 /minisign.egg-info/
 /py_minisign.egg-info/
+__pycache__

@@ -16,6 +16,7 @@ from typing import (
     BinaryIO,
     Optional,
     Union,
+    Literal,
 )
 
 from cryptography.exceptions import InvalidSignature
@@ -51,7 +52,7 @@ MEMLIMIT_MAX = 1_073_741_824
 N_LOG2_MAX = 20
 
 SIG_EXT = 'minisig'
-BYTE_ORDER = 'little'
+BYTE_ORDER: Literal['little', 'big'] = 'little'
 DEFAULT_SK_PATH = '~/.minisign/minisign.key'
 
 UNTRUSTED_COMMENT_PREFIX = 'untrusted comment: '
