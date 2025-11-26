@@ -7,7 +7,7 @@ authors = [
 ]
 description = "Python minisign library"
 readme = "README.rst"
-requires-python = ">= 3.8"
+requires-python = ">= 3.9"
 dependencies = [
   "cryptography >= 46.0.3",
 ]
