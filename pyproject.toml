@@ -9,7 +9,7 @@ description = "Python minisign library"
 readme = "README.rst"
 requires-python = ">= 3.9"
 dependencies = [
-  "cryptography >= 48.0.1",
+  "cryptography >= 50.0.0",
 ]
 license = "MIT"
 
