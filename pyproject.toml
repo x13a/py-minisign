@@ -36,4 +36,6 @@ version = { attr = "minisign.__version__" }
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "ruff>=0.16.2",
+    "ty>=0.0.69",
 ]
