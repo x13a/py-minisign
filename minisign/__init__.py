@@ -8,6 +8,7 @@ from .exceptions import (
     VerifyError,
 )
 from .minisign import (
+    KDFAlgorithm,
     KeyPair,
     PublicKey,
     SecretKey,
@@ -16,6 +17,7 @@ from .minisign import (
 
 __all__ = [
     "Error",
+    "KDFAlgorithm",
     "KeyPair",
     "ParseError",
     "PublicKey",

@@ -66,6 +66,7 @@ class SignatureAlgorithm(bytes, enum.Enum):
 
 @enum.unique
 class KDFAlgorithm(bytes, enum.Enum):
+    NONE = bytes([0x00, 0x00])
     SCRYPT = bytes([0x53, 0x63])
 
 
@@ -341,12 +342,32 @@ class SecretKey:
     def get_public_key(self) -> PublicKey:
         return PublicKey.from_secret_key(self)
 
+    def is_encrypted(self) -> bool:
+        if self._kdf_algorithm == KDFAlgorithm.NONE:
+            return False
+        return self._calc_checksum() != bytes(self._keynum_sk.checksum)
+
     def decrypt(self, password: str) -> None:
+        if not self.is_encrypted():
+            return
+        encrypted_keynum = bytes(self._keynum_sk)
         self._crypt(password)
         if self._calc_checksum() != bytes(self._keynum_sk.checksum):
+            self.__dict__["_keynum_sk"] = KeynumSK.from_bytes(encrypted_keynum)
             raise Error("wrong password for that key")
 
     def encrypt(self, password: str) -> None:
+        if self.is_encrypted():
+            raise Error("secret key is already encrypted")
+        if self._kdf_algorithm == KDFAlgorithm.NONE:
+            self.__dict__.update(
+                _kdf_algorithm=KDFAlgorithm.SCRYPT,
+                _kdf_salt=secrets.token_bytes(SALT_LEN),
+                _kdf_opslimit=OPSLIMIT,
+                _kdf_memlimit=MEMLIMIT,
+            )
+        elif self._kdf_algorithm != KDFAlgorithm.SCRYPT:
+            raise Error("unsupported KDF algorithm")
         self._crypt(password)
 
     def _crypt(self, password: str) -> None:
@@ -387,6 +408,8 @@ class SecretKey:
         untrusted_comment: str | None = None,
         trusted_comment: str | None = None,
     ) -> Signature:
+        if self.is_encrypted():
+            raise Error("secret key is encrypted; decrypt it before signing")
         untrusted_comment = (
             f"{UNTRUSTED_COMMENT_PREFIX}minisign signature "
             f"{self._keynum_sk.key_id.hex().upper()}"
@@ -471,7 +494,17 @@ class KeyPair:
     public_key: PublicKey
 
     @classmethod
-    def generate(cls) -> KeyPair:
+    def generate(
+        cls,
+        *,
+        kdf_algorithm: KDFAlgorithm = KDFAlgorithm.NONE,
+        password: str | None = None,
+    ) -> KeyPair:
+        if kdf_algorithm == KDFAlgorithm.NONE and password is not None:
+            raise Error("a password requires the scrypt KDF")
+        is_script = kdf_algorithm == KDFAlgorithm.SCRYPT
+        if is_script and password is None:
+            raise Error("the scrypt KDF requires a password")
         private_key = ed25519.Ed25519PrivateKey.generate()
         key_id = secrets.token_bytes(KEY_ID_LEN)
         sk = SecretKey(
@@ -479,11 +512,11 @@ class KeyPair:
             f"minisign secret key "
             f"{key_id.hex().upper()}",
             _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
-            _kdf_algorithm=KDFAlgorithm.SCRYPT,
+            _kdf_algorithm=kdf_algorithm,
             _cksum_algorithm=CksumAlgorithm.BLAKE2b,
-            _kdf_salt=secrets.token_bytes(SALT_LEN),
-            _kdf_opslimit=OPSLIMIT,
-            _kdf_memlimit=MEMLIMIT,
+            _kdf_salt=(secrets.token_bytes(SALT_LEN) if is_script else bytes(SALT_LEN)),
+            _kdf_opslimit=OPSLIMIT if is_script else 0,
+            _kdf_memlimit=MEMLIMIT if is_script else 0,
             _keynum_sk=KeynumSK(
                 key_id=bytearray(key_id),
                 secret_key=bytearray(
@@ -503,4 +536,7 @@ class KeyPair:
             ),
         )
         sk._update_checksum()
-        return cls(secret_key=sk, public_key=PublicKey.from_secret_key(sk))
+        public_key = PublicKey.from_secret_key(sk)
+        if password is not None:
+            sk.encrypt(password)
+        return cls(secret_key=sk, public_key=public_key)
