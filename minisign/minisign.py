@@ -10,7 +10,7 @@ import hashlib
 import os
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     Literal,
@@ -185,6 +185,7 @@ class PublicKey:
 
     @classmethod
     def from_secret_key(cls, secret_key: SecretKey) -> PublicKey:
+        secret_key._check_is_wiped()
         key_id = bytes(secret_key._keynum_sk.key_id)
         return cls(
             _untrusted_comment=f"{UNTRUSTED_COMMENT_PREFIX}"
@@ -303,6 +304,7 @@ class SecretKey:
     _kdf_opslimit: int
     _kdf_memlimit: int
     _keynum_sk: KeynumSK
+    _is_wiped: bool = field(default=False, init=False, compare=False, repr=False)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> SecretKey:
@@ -340,14 +342,34 @@ class SecretKey:
         self.__dict__["_untrusted_comment"] = value
 
     def get_public_key(self) -> PublicKey:
+        self._check_is_wiped()
         return PublicKey.from_secret_key(self)
 
+    def is_wiped(self) -> bool:
+        return self._is_wiped
+
+    def wipe(self) -> None:
+        for value in (
+            self._keynum_sk.key_id,
+            self._keynum_sk.secret_key,
+            self._keynum_sk.public_key,
+            self._keynum_sk.checksum,
+        ):
+            value[0:] = b"\0" * len(value)
+        self.__dict__["_is_wiped"] = True
+
+    def _check_is_wiped(self) -> None:
+        if self._is_wiped:
+            raise Error("secret key has been wiped")
+
     def is_encrypted(self) -> bool:
+        self._check_is_wiped()
         if self._kdf_algorithm == KDFAlgorithm.NONE:
             return False
         return self._calc_checksum() != bytes(self._keynum_sk.checksum)
 
     def decrypt(self, password: str) -> None:
+        self._check_is_wiped()
         if not self.is_encrypted():
             return
         encrypted_keynum = bytes(self._keynum_sk)
@@ -357,6 +379,7 @@ class SecretKey:
             raise Error("wrong password for that key")
 
     def encrypt(self, password: str) -> None:
+        self._check_is_wiped()
         if self.is_encrypted():
             raise Error("secret key is already encrypted")
         if self._kdf_algorithm == KDFAlgorithm.NONE:
@@ -408,6 +431,7 @@ class SecretKey:
         untrusted_comment: str | None = None,
         trusted_comment: str | None = None,
     ) -> Signature:
+        self._check_is_wiped()
         if self.is_encrypted():
             raise Error("secret key is encrypted; decrypt it before signing")
         untrusted_comment = (
@@ -472,6 +496,7 @@ class SecretKey:
         self._keynum_sk.checksum[0:] = self._calc_checksum()
 
     def __bytes__(self) -> bytes:
+        self._check_is_wiped()
         return b"\n".join(
             (
                 self._untrusted_comment.encode(),

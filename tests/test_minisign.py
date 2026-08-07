@@ -131,6 +131,25 @@ def test_encrypted_key_operations_are_safe():
     assert sk.is_encrypted()
 
 
+def test_wipe_secret_key():
+    sk = KeyPair.generate().secret_key
+    sk.wipe()
+    assert sk.is_wiped()
+    assert not any(bytes(sk._keynum_sk))
+    sk.wipe()
+    for operation in (
+        sk.get_public_key,
+        lambda: PublicKey.from_secret_key(sk),
+        sk.is_encrypted,
+        lambda: sk.encrypt("password"),
+        lambda: sk.decrypt("password"),
+        lambda: sk.sign(b"data"),
+        lambda: bytes(sk),
+    ):
+        with pytest.raises(Error, match="has been wiped"):
+            operation()
+
+
 def test_sign_verify():
     kp = KeyPair.generate()
     data = b"very important data"
