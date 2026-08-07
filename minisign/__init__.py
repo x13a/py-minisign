@@ -2,8 +2,6 @@
 Minisign
 """
 
-__version__ = "0.13.4"
-
 from .exceptions import (
     Error,
     ParseError,

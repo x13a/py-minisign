@@ -1,13 +1,13 @@
 [project]
 name = "py-minisign"
-dynamic = ["version"]
+version = "0.13.4"
 authors = [
   { name = "Frank Denis" },
   { name = "lucky" },
 ]
 description = "Python minisign library"
 readme = "README.rst"
-requires-python = ">=3.9,!=3.9.0,!=3.9.1"
+requires-python = ">=3.10"
 dependencies = [
   "cryptography>=50.0.0",
 ]
@@ -27,11 +27,12 @@ source = "https://github.com/x13a/py-minisign"
 issues = "https://github.com/x13a/py-minisign/issues"
 
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.12.2,<0.13"]
+build-backend = "uv_build"
 
-[tool.setuptools.dynamic]
-version = { attr = "minisign.__version__" }
+[tool.uv.build-backend]
+module-name = "minisign"
+module-root = ""
 
 [dependency-groups]
 dev = [
