@@ -2,7 +2,7 @@
 Minisign
 """
 
-__version__ = '0.13.4'
+__version__ = "0.13.4"
 
 from .exceptions import (
     Error,
@@ -15,3 +15,13 @@ from .minisign import (
     SecretKey,
     Signature,
 )
+
+__all__ = [
+    "Error",
+    "KeyPair",
+    "ParseError",
+    "PublicKey",
+    "SecretKey",
+    "Signature",
+    "VerifyError",
+]

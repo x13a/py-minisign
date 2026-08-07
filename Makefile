@@ -6,4 +6,4 @@ clean:
 	rm -rf ./py_$(NAME).egg-info/
 
 test:
-	uv run python3 -m unittest
+	uv run pytest

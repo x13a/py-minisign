@@ -9,18 +9,22 @@ description = "Python minisign library"
 readme = "README.rst"
 requires-python = ">=3.9,!=3.9.0,!=3.9.1"
 dependencies = [
-  "cryptography >= 50.0.0",
+  "cryptography>=50.0.0",
 ]
 license = "MIT"
+license-files = ["LICEN[CS]E*"]
 
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 5 - Production/Stable",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security :: Cryptography",
 ]
 
 [project.urls]
-Homepage = "https://github.com/x13a/py-minisign"
-Issues = "https://github.com/x13a/py-minisign/issues"
+homepage = "https://github.com/x13a/py-minisign"
+source = "https://github.com/x13a/py-minisign"
+issues = "https://github.com/x13a/py-minisign/issues"
 
 [build-system]
 requires = ["setuptools >= 61.0"]
@@ -28,3 +32,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.dynamic]
 version = { attr = "minisign.__version__" }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
