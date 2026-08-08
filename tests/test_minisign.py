@@ -173,6 +173,27 @@ def test_wipe_secret_key():
             operation()
 
 
+def test_secret_key_context_manager_wipes_on_exit():
+    secret_key = KeyPair.generate().secret_key
+
+    with secret_key as entered:
+        assert entered is secret_key
+        assert not secret_key.is_wiped()
+
+    assert secret_key.is_wiped()
+    assert not any(bytes(secret_key._keynum_sk))
+
+
+def test_secret_key_context_manager_wipes_on_exception():
+    secret_key = KeyPair.generate().secret_key
+
+    with pytest.raises(RuntimeError, match="signing failed"), secret_key:
+        raise RuntimeError("signing failed")
+
+    assert secret_key.is_wiped()
+    assert not any(bytes(secret_key._keynum_sk))
+
+
 def test_parsers_reject_invalid_structure():
     key_pair = KeyPair.generate()
     signature = key_pair.secret_key.sign(b"data")

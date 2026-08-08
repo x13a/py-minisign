@@ -14,12 +14,14 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
 from typing import Literal
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.kdf import scrypt
+from typing_extensions import Self
 
 from .exceptions import (
     Error,
@@ -118,7 +120,7 @@ class Signature:
     _global_signature: bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> Signature:
+    def from_bytes(cls, data: bytes) -> Self:
         lines = _split_lines(data, 4)
         glob_sig = _decode_base64(lines[3], SIG_LEN)
         buf = Reader(_decode_base64(lines[1], SIG_0_LEN))
@@ -136,7 +138,7 @@ class Signature:
         )
 
     @classmethod
-    def from_file(cls, path: str | os.PathLike[str]) -> Signature:
+    def from_file(cls, path: str | os.PathLike[str]) -> Self:
         with open(path, "rb") as f:
             return cls.from_bytes(f.read())
 
@@ -174,7 +176,7 @@ class KeynumPK:
     public_key: bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes | Reader) -> KeynumPK:
+    def from_bytes(cls, data: bytes | Reader) -> Self:
         assert len(data) == KEYNUM_PK_LEN
         if isinstance(data, bytes):
             data = Reader(data)
@@ -191,7 +193,7 @@ class PublicKey:
     _keynum_pk: KeynumPK
 
     @classmethod
-    def from_base64(cls, s: str | bytes) -> PublicKey:
+    def from_base64(cls, s: str | bytes) -> Self:
         buf = Reader(_decode_base64(s, PUBLIC_KEY_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
@@ -206,19 +208,19 @@ class PublicKey:
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> PublicKey:
+    def from_bytes(cls, data: bytes) -> Self:
         lines = _split_lines(data, 2)
         pk = cls.from_base64(lines[1])
         pk.set_untrusted_comment(_decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX))
         return pk
 
     @classmethod
-    def from_file(cls, path: str | os.PathLike[str]) -> PublicKey:
+    def from_file(cls, path: str | os.PathLike[str]) -> Self:
         with open(path, "rb") as f:
             return cls.from_bytes(f.read())
 
     @classmethod
-    def from_secret_key(cls, secret_key: SecretKey) -> PublicKey:
+    def from_secret_key(cls, secret_key: SecretKey) -> Self:
         secret_key._check_is_wiped()
         key_id = bytes(secret_key._keynum_sk.key_id)
         return cls(
@@ -287,7 +289,7 @@ class KeynumSK:
     checksum: bytearray
 
     @classmethod
-    def from_bytes(cls, data: bytes | Reader) -> KeynumSK:
+    def from_bytes(cls, data: bytes | Reader) -> Self:
         assert len(data) == KEYNUM_SK_LEN
         if isinstance(data, bytes):
             data = Reader(data)
@@ -340,8 +342,19 @@ class SecretKey:
     _keynum_sk: KeynumSK
     _is_wiped: bool = field(default=False, init=False, compare=False, repr=False)
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.wipe()
+
     @classmethod
-    def from_base64(cls, s: str | bytes) -> SecretKey:
+    def from_base64(cls, s: str | bytes) -> Self:
         buf = Reader(_decode_base64(s, SECRET_KEY_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
@@ -363,7 +376,7 @@ class SecretKey:
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> SecretKey:
+    def from_bytes(cls, data: bytes) -> Self:
         lines = _split_lines(data, 2)
         v = cls.from_base64(lines[1])
         v.set_untrusted_comment(_decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX))
@@ -373,7 +386,7 @@ class SecretKey:
     def from_file(
         cls,
         path: str | os.PathLike[str] | None = None,
-    ) -> SecretKey:
+    ) -> Self:
         if path is None:
             path = Path(DEFAULT_SK_PATH).expanduser().resolve(strict=True)
         with open(path, "rb") as f:
@@ -572,7 +585,7 @@ class KeyPair:
         cls,
         *,
         kdf_algorithm: KDFAlgorithm = KDFAlgorithm.NONE,
-    ) -> KeyPair:
+    ) -> Self:
         is_script = kdf_algorithm == KDFAlgorithm.SCRYPT
         private_key = ed25519.Ed25519PrivateKey.generate()
         key_id = secrets.token_bytes(KEY_ID_LEN)

@@ -50,15 +50,12 @@ signing and wipe its mutable secret buffers when it is no longer needed:
 
     import minisign
 
-    secret_key = minisign.SecretKey.from_file("/path/to/minisign.key")
-    try:
+    with minisign.SecretKey.from_file("/path/to/minisign.key") as secret_key:
         secret_key.decrypt("strong password")
         signature = secret_key.sign(
             b"very important data",
             trusted_comment="release 1.0",
         )
-    finally:
-        secret_key.wipe()
 
     print(bytes(signature).decode())
 
@@ -79,9 +76,8 @@ serialized:
     import minisign
 
     key_pair = minisign.KeyPair.generate()
-    secret_key = key_pair.secret_key
 
-    try:
+    with key_pair.secret_key as secret_key:
         secret_key.encrypt("strong password")
 
         with open(
@@ -96,8 +92,6 @@ serialized:
 
         with open("/path/to/minisign.pub", "wb") as file:
             file.write(bytes(key_pair.public_key) + b"\n")
-    finally:
-        secret_key.wipe()
 
 The KDF can also be selected explicitly at generation time. A key generated
 with ``SCRYPT`` still needs an ``encrypt()`` call before it is encrypted:
@@ -125,18 +119,15 @@ Sign and verify files
 
     import minisign
 
-    secret_key = minisign.SecretKey.from_file("/path/to/minisign.key")
     public_key = minisign.PublicKey.from_file("/path/to/minisign.pub")
 
-    try:
+    with minisign.SecretKey.from_file("/path/to/minisign.key") as secret_key:
         secret_key.decrypt("strong password")
         secret_key.sign_file(
             "archive.tar.gz",
             prehash=True,
             drop_signature=True,
         )
-    finally:
-        secret_key.wipe()
 
     # Reads archive.tar.gz.minisig automatically.
     public_key.verify_file("archive.tar.gz")
@@ -155,7 +146,8 @@ Memory wiping
 -------------
 
 ``SecretKey.wipe()`` overwrites the mutable secret-key buffers and prevents the
-key object from being used again.
+key object from being used again. Using ``SecretKey`` as a context manager calls
+``wipe()`` automatically, including when the block exits with an exception.
 
 Development
 -----------
