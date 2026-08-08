@@ -8,6 +8,7 @@ import base64
 import binascii
 import enum
 import hashlib
+import hmac
 import os
 import secrets
 import time
@@ -407,7 +408,9 @@ class SecretKey:
             return
         encrypted_keynum = bytes(self._keynum_sk)
         self._crypt(password)
-        if self._calc_checksum() != bytes(self._keynum_sk.checksum):
+        if not hmac.compare_digest(
+            self._calc_checksum(), bytes(self._keynum_sk.checksum)
+        ):
             self.__dict__["_keynum_sk"] = KeynumSK.from_bytes(encrypted_keynum)
             raise Error("wrong password for that key")
 
