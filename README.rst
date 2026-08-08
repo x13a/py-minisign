@@ -2,8 +2,7 @@ py-minisign
 ===========
 
 A Python implementation of the `Minisign <https://jedisct1.github.io/minisign/>`_
-signature system. It can parse keys and signatures produced by the original
-Minisign implementation and by the Go and Rust implementations.
+signature system.
 
 Installation
 ------------
@@ -18,7 +17,7 @@ With pip:
 
 .. code:: shell
 
-    python -m pip install py-minisign
+    python3 -m pip install py-minisign
 
 Verify a signature
 ------------------
@@ -39,8 +38,7 @@ Verify a signature
 
     public_key.verify(b"test", signature)
 
-``verify()`` returns ``None`` on success and raises ``VerifyError`` if the
-signature is invalid.
+``verify()`` raises ``VerifyError`` if the signature is invalid.
 
 Sign data
 ---------
@@ -157,9 +155,7 @@ Memory wiping
 -------------
 
 ``SecretKey.wipe()`` overwrites the mutable secret-key buffers and prevents the
-key object from being used again. Memory wiping in Python is best effort:
-temporary immutable ``bytes`` objects may be created by Python or cryptographic
-libraries and cannot be overwritten reliably.
+key object from being used again.
 
 Development
 -----------
@@ -175,9 +171,9 @@ Run the test suite and static checks:
 .. code:: shell
 
     uv run pytest
-    uv run ruff check .
-    uv run ruff format --check .
-    uv run ty check
+    uvx ruff format
+    uvx ruff check
+    uvx ty check
 
 Build the source distribution and wheel:
 
