@@ -197,6 +197,8 @@ class PublicKey:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
         except ValueError as err:
             raise ParseError("unsupported signature algorithm") from err
+        if signature_algorithm == SignatureAlgorithm.PREHASHED_ED_DSA:
+            raise ParseError("invalid signature algorithm")
         return cls(
             _untrusted_comment=None,
             _signature_algorithm=signature_algorithm,
@@ -296,6 +298,15 @@ class KeynumSK:
             checksum=bytearray(data.read(CHECKSUM_LEN)),
         )
 
+    def wipe(self) -> None:
+        for value in (
+            self.key_id,
+            self.secret_key,
+            self.public_key,
+            self.checksum,
+        ):
+            value[0:] = b"\0" * len(value)
+
     def xor(self, key: bytes) -> None:
         assert len(key) == KEYNUM_SK_LEN
         buf = Reader(key)
@@ -338,6 +349,8 @@ class SecretKey:
             cksum_algorithm = CksumAlgorithm(buf.read(ALG_LEN))
         except ValueError as err:
             raise ParseError("unsupported key algorithm") from err
+        if signature_algorithm == SignatureAlgorithm.PREHASHED_ED_DSA:
+            raise ParseError("invalid signature algorithm")
         return cls(
             _untrusted_comment=None,
             _signature_algorithm=signature_algorithm,
@@ -383,13 +396,7 @@ class SecretKey:
         return self._is_wiped
 
     def wipe(self) -> None:
-        for value in (
-            self._keynum_sk.key_id,
-            self._keynum_sk.secret_key,
-            self._keynum_sk.public_key,
-            self._keynum_sk.checksum,
-        ):
-            value[0:] = b"\0" * len(value)
+        self._keynum_sk.wipe()
         self.__dict__["_is_wiped"] = True
 
     def _check_is_wiped(self) -> None:
@@ -400,7 +407,9 @@ class SecretKey:
         self._check_is_wiped()
         if self._kdf_algorithm == KDFAlgorithm.NONE:
             return False
-        return self._calc_checksum() != bytes(self._keynum_sk.checksum)
+        return not hmac.compare_digest(
+            self._calc_checksum(), bytes(self._keynum_sk.checksum)
+        )
 
     def decrypt(self, password: str) -> None:
         self._check_is_wiped()
@@ -532,6 +541,7 @@ class SecretKey:
         self._keynum_sk.checksum[0:] = self._calc_checksum()
 
     def to_base64(self) -> bytes:
+        self._check_is_wiped()
         return base64.standard_b64encode(
             self._signature_algorithm.value
             + self._kdf_algorithm.value
