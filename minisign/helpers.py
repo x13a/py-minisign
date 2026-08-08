@@ -1,5 +1,5 @@
-from __future__ import annotations
-
+import base64
+import binascii
 import hashlib
 from typing import Protocol, runtime_checkable
 
@@ -47,3 +47,30 @@ def check_comment(s: str) -> None:
         raise ParseError("comment contains a line break")
     if any(c != "\t" and not " " <= c < "\x7f" for c in s):
         raise ParseError("comment contains an unprintable character")
+
+
+def decode_base64(data: str | bytes, expected_len: int) -> bytes:
+    try:
+        decoded = base64.b64decode(data, validate=True)
+    except (ValueError, binascii.Error) as err:
+        raise ParseError("invalid base64 encoding") from err
+    if len(decoded) != expected_len:
+        raise ParseError("invalid encoded length")
+    return decoded
+
+
+def decode_comment(data: bytes, prefix: str) -> str:
+    try:
+        comment = data.decode()
+    except UnicodeDecodeError as err:
+        raise ParseError("invalid comment encoding") from err
+    if not comment.startswith(prefix):
+        raise ParseError("invalid comment prefix")
+    return comment[len(prefix) :]
+
+
+def split_lines(data: bytes, expected_len: int) -> list[bytes]:
+    lines = data.splitlines()
+    if len(lines) != expected_len:
+        raise ParseError("invalid number of lines")
+    return lines

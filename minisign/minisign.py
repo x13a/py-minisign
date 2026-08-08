@@ -2,10 +2,7 @@
 https://jedisct1.github.io/minisign
 """
 
-from __future__ import annotations
-
 import base64
-import binascii
 import enum
 import hashlib
 import hmac
@@ -32,7 +29,10 @@ from .helpers import (
     BytesReaderProto,
     Reader,
     check_comment,
+    decode_base64,
+    decode_comment,
     read_data,
+    split_lines,
 )
 
 ALG_LEN = 2
@@ -83,34 +83,7 @@ class CksumAlgorithm(bytes, enum.Enum):
     BLAKE2b = bytes([0x42, 0x32])
 
 
-def _decode_base64(data: str | bytes, expected_len: int) -> bytes:
-    try:
-        decoded = base64.b64decode(data, validate=True)
-    except (ValueError, binascii.Error) as err:
-        raise ParseError("invalid base64 encoding") from err
-    if len(decoded) != expected_len:
-        raise ParseError("invalid encoded length")
-    return decoded
-
-
-def _decode_comment(data: bytes, prefix: str) -> str:
-    try:
-        comment = data.decode()
-    except UnicodeDecodeError as err:
-        raise ParseError("invalid comment encoding") from err
-    if not comment.startswith(prefix):
-        raise ParseError("invalid comment prefix")
-    return comment[len(prefix) :]
-
-
-def _split_lines(data: bytes, expected_len: int) -> list[bytes]:
-    lines = data.splitlines()
-    if len(lines) != expected_len:
-        raise ParseError("invalid number of lines")
-    return lines
-
-
-@dataclass(frozen=True)
+@dataclass(unsafe_hash=True)
 class Signature:
     _untrusted_comment: str = field(compare=False)
     _signature_algorithm: SignatureAlgorithm
@@ -121,19 +94,19 @@ class Signature:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        lines = _split_lines(data, 4)
-        glob_sig = _decode_base64(lines[3], SIG_LEN)
-        buf = Reader(_decode_base64(lines[1], SIG_0_LEN))
+        lines = split_lines(data, 4)
+        glob_sig = decode_base64(lines[3], SIG_LEN)
+        buf = Reader(decode_base64(lines[1], SIG_0_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
         except ValueError as err:
             raise ParseError("unsupported signature algorithm") from err
         return cls(
-            _untrusted_comment=_decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX),
+            _untrusted_comment=decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX),
             _signature_algorithm=signature_algorithm,
             _key_id=buf.read(KEY_ID_LEN),
             _signature=buf.read(SIG_LEN),
-            _trusted_comment=_decode_comment(lines[2], TRUSTED_COMMENT_PREFIX),
+            _trusted_comment=decode_comment(lines[2], TRUSTED_COMMENT_PREFIX),
             _global_signature=glob_sig,
         )
 
@@ -146,9 +119,10 @@ class Signature:
     def untrusted_comment(self) -> str:
         return self._untrusted_comment
 
-    def set_untrusted_comment(self, value: str) -> None:
+    @untrusted_comment.setter
+    def untrusted_comment(self, value: str) -> None:
         check_comment(value)
-        self.__dict__["_untrusted_comment"] = value
+        self._untrusted_comment = value
 
     @property
     def trusted_comment(self) -> str:
@@ -186,7 +160,7 @@ class KeynumPK:
         return self.key_id + self.public_key
 
 
-@dataclass(frozen=True)
+@dataclass(unsafe_hash=True)
 class PublicKey:
     _untrusted_comment: str | None = field(compare=False)
     _signature_algorithm: SignatureAlgorithm
@@ -194,7 +168,7 @@ class PublicKey:
 
     @classmethod
     def from_base64(cls, s: str | bytes) -> Self:
-        buf = Reader(_decode_base64(s, PUBLIC_KEY_LEN))
+        buf = Reader(decode_base64(s, PUBLIC_KEY_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
         except ValueError as err:
@@ -209,9 +183,9 @@ class PublicKey:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        lines = _split_lines(data, 2)
+        lines = split_lines(data, 2)
         pk = cls.from_base64(lines[1])
-        pk.set_untrusted_comment(_decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX))
+        pk.untrusted_comment = decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX)
         return pk
 
     @classmethod
@@ -220,7 +194,7 @@ class PublicKey:
             return cls.from_bytes(f.read())
 
     @classmethod
-    def from_secret_key(cls, secret_key: SecretKey) -> Self:
+    def from_secret_key(cls, secret_key: "SecretKey") -> Self:
         secret_key._check_is_wiped()
         key_id = bytes(secret_key._keynum_sk.key_id)
         return cls(
@@ -236,10 +210,11 @@ class PublicKey:
     def untrusted_comment(self) -> str | None:
         return self._untrusted_comment
 
-    def set_untrusted_comment(self, value: str | None) -> None:
+    @untrusted_comment.setter
+    def untrusted_comment(self, value: str | None) -> None:
         if value is not None:
             check_comment(value)
-        self.__dict__["_untrusted_comment"] = value
+        self._untrusted_comment = value
 
     def verify(self, data: bytes | BytesReaderProto, signature: Signature) -> None:
         if self._keynum_pk.key_id != signature._key_id:
@@ -281,7 +256,7 @@ class PublicKey:
         return b"\n".join((comment.encode(), self.to_base64()))
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(repr=False)
 class KeynumSK:
     key_id: bytearray
     secret_key: bytearray
@@ -330,7 +305,7 @@ class KeynumSK:
         )
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(repr=False)
 class SecretKey:
     _untrusted_comment: str | None = field(compare=False)
     _signature_algorithm: SignatureAlgorithm
@@ -355,7 +330,7 @@ class SecretKey:
 
     @classmethod
     def from_base64(cls, s: str | bytes) -> Self:
-        buf = Reader(_decode_base64(s, SECRET_KEY_LEN))
+        buf = Reader(decode_base64(s, SECRET_KEY_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
             kdf_algorithm = KDFAlgorithm(buf.read(ALG_LEN))
@@ -377,9 +352,9 @@ class SecretKey:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        lines = _split_lines(data, 2)
+        lines = split_lines(data, 2)
         v = cls.from_base64(lines[1])
-        v.set_untrusted_comment(_decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX))
+        v.untrusted_comment = decode_comment(lines[0], UNTRUSTED_COMMENT_PREFIX)
         return v
 
     @classmethod
@@ -396,21 +371,23 @@ class SecretKey:
     def untrusted_comment(self) -> str | None:
         return self._untrusted_comment
 
-    def set_untrusted_comment(self, value: str | None) -> None:
+    @untrusted_comment.setter
+    def untrusted_comment(self, value: str | None) -> None:
         if value is not None:
             check_comment(value)
-        self.__dict__["_untrusted_comment"] = value
+        self._untrusted_comment = value
 
     def get_public_key(self) -> PublicKey:
         self._check_is_wiped()
         return PublicKey.from_secret_key(self)
 
+    @property
     def is_wiped(self) -> bool:
         return self._is_wiped
 
     def wipe(self) -> None:
         self._keynum_sk.wipe()
-        self.__dict__["_is_wiped"] = True
+        self._is_wiped = True
 
     def _check_is_wiped(self) -> None:
         if self._is_wiped:
@@ -433,7 +410,7 @@ class SecretKey:
         if not hmac.compare_digest(
             self._calc_checksum(), bytes(self._keynum_sk.checksum)
         ):
-            self.__dict__["_keynum_sk"] = KeynumSK.from_bytes(encrypted_keynum)
+            self._keynum_sk = KeynumSK.from_bytes(encrypted_keynum)
             raise Error("wrong password for that key")
 
     def encrypt(self, password: str) -> None:
@@ -441,12 +418,10 @@ class SecretKey:
         if self.is_encrypted():
             raise Error("secret key is already encrypted")
         if self._kdf_algorithm == KDFAlgorithm.NONE:
-            self.__dict__.update(
-                _kdf_algorithm=KDFAlgorithm.SCRYPT,
-                _kdf_salt=secrets.token_bytes(SALT_LEN),
-                _kdf_opslimit=OPSLIMIT,
-                _kdf_memlimit=MEMLIMIT,
-            )
+            self._kdf_algorithm = KDFAlgorithm.SCRYPT
+            self._kdf_salt = secrets.token_bytes(SALT_LEN)
+            self._kdf_opslimit = OPSLIMIT
+            self._kdf_memlimit = MEMLIMIT
         elif self._kdf_algorithm != KDFAlgorithm.SCRYPT:
             raise Error("unsupported KDF algorithm")
         self._crypt(password)

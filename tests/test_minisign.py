@@ -58,6 +58,45 @@ def test_sign_prefixed_trusted_comment():
     kp.public_key.verify(b"data", Signature.from_bytes(bytes(sig)))
 
 
+def test_untrusted_comment_setters():
+    key_pair = KeyPair.generate()
+    values = (
+        key_pair.secret_key.sign(b"data"),
+        key_pair.public_key,
+        key_pair.secret_key,
+    )
+
+    for value in values:
+        value.untrusted_comment = "release"
+        assert value.untrusted_comment == "release"
+        assert bytes(value).splitlines()[0] == b"untrusted comment: release"
+
+
+def test_key_untrusted_comment_setters_accept_none():
+    key_pair = KeyPair.generate()
+
+    for key in (key_pair.public_key, key_pair.secret_key):
+        key.untrusted_comment = "release"
+        key.untrusted_comment = None
+        assert key.untrusted_comment is None
+
+
+@pytest.mark.parametrize("invalid", ("line 1\nline 2", "bad\x01comment"))
+def test_untrusted_comment_setters_are_atomic(invalid: str):
+    key_pair = KeyPair.generate()
+    values = (
+        key_pair.secret_key.sign(b"data"),
+        key_pair.public_key,
+        key_pair.secret_key,
+    )
+
+    for value in values:
+        value.untrusted_comment = "original"
+        with pytest.raises(ParseError):
+            value.untrusted_comment = invalid
+        assert value.untrusted_comment == "original"
+
+
 def test_signature_authentication_boundaries():
     key_pair = KeyPair.generate()
     signature = key_pair.secret_key.sign(
@@ -156,7 +195,7 @@ def test_encrypted_key_operations_safe():
 def test_wipe_secret_key():
     sk = KeyPair.generate().secret_key
     sk.wipe()
-    assert sk.is_wiped()
+    assert sk.is_wiped
     assert not any(bytes(sk._keynum_sk))
     sk.wipe()
     for operation in (
@@ -178,9 +217,9 @@ def test_secret_key_context_manager_wipes_on_exit():
 
     with secret_key as entered:
         assert entered is secret_key
-        assert not secret_key.is_wiped()
+        assert not secret_key.is_wiped
 
-    assert secret_key.is_wiped()
+    assert secret_key.is_wiped
     assert not any(bytes(secret_key._keynum_sk))
 
 
@@ -190,7 +229,7 @@ def test_secret_key_context_manager_wipes_on_exception():
     with pytest.raises(RuntimeError, match="signing failed"), secret_key:
         raise RuntimeError("signing failed")
 
-    assert secret_key.is_wiped()
+    assert secret_key.is_wiped
     assert not any(bytes(secret_key._keynum_sk))
 
 
