@@ -1,46 +1,23 @@
+import base64
 import copy
 import io
 import secrets
+from pathlib import Path
 
 import pytest
 
 from minisign.minisign import (
     KEYNUM_SK_LEN,
+    TRUSTED_COMMENT_MAX_LEN,
     Error,
     KDFAlgorithm,
     KeyPair,
+    ParseError,
     PublicKey,
     SecretKey,
     Signature,
+    VerifyError,
 )
-
-
-def test_verify_pure():
-    sig = Signature.from_bytes(
-        b"untrusted comment: signature from minisign secret key\n"
-        b"RWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=\n"
-        b"trusted comment: timestamp:1555779966\tfile:test\n"
-        b"QtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA=="
-    )
-    assert sig.untrusted_comment == "signature from minisign secret key"
-    assert sig.trusted_comment == "timestamp:1555779966\tfile:test"
-    PublicKey.from_base64(
-        "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
-    ).verify(b"test", sig)
-
-
-def test_verify_prehashed():
-    sig = Signature.from_bytes(
-        b"untrusted comment: signature from minisign secret key\n"
-        b"RUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\n"
-        b"trusted comment: timestamp:1556193335\tfile:test\n"
-        b"y/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg=="
-    )
-    assert sig.untrusted_comment == "signature from minisign secret key"
-    assert sig.trusted_comment == "timestamp:1556193335\tfile:test"
-    PublicKey.from_base64(
-        "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
-    ).verify(b"test", sig)
 
 
 def test_public_key_conv():
@@ -48,23 +25,23 @@ def test_public_key_conv():
     assert pk == PublicKey.from_bytes(bytes(pk))
 
 
+def test_public_key_rejects_prehash_algorithm():
+    encoded = bytearray(base64.b64decode(KeyPair.generate().public_key.to_base64()))
+    encoded[:2] = b"ED"
+    with pytest.raises(ParseError, match="invalid signature algorithm"):
+        PublicKey.from_base64(base64.b64encode(encoded))
+
+
 def test_secret_key_conv():
     sk = KeyPair.generate().secret_key
     assert sk == SecretKey.from_bytes(bytes(sk))
 
 
-def test_unencrypted_secret_key():
-    sk = SecretKey.from_bytes(
-        b"untrusted comment: minisign encrypted secret key\n"
-        b"RWQAAEIyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOItWpGuGQbG4C9WXaxEYLgZ2xxuqfbuZmDgAhQ8Unot8t7SyxZ0nVh0gESesJ6Ay57fGFJ9T1ajVmanT7MFMCCDbPZ8uqDcSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-    )
-    pk = PublicKey.from_bytes(
-        b"untrusted comment: minisign public key B141866BA4568B38\n"
-        b"RWQ4i1aka4ZBsR0gESesJ6Ay57fGFJ9T1ajVmanT7MFMCCDbPZ8uqDcS"
-    )
-    assert sk.get_public_key().to_base64() == pk.to_base64()
-    v = b"data"
-    pk.verify(v, sk.sign(v))
+def test_secret_key_rejects_prehash_algorithm():
+    encoded = bytearray(base64.b64decode(KeyPair.generate().secret_key.to_base64()))
+    encoded[:2] = b"ED"
+    with pytest.raises(ParseError, match="invalid signature algorithm"):
+        SecretKey.from_base64(base64.b64encode(encoded))
 
 
 def test_signature_conv():
@@ -79,6 +56,50 @@ def test_sign_prefixed_trusted_comment():
         trusted_comment="trusted comment: release",
     )
     kp.public_key.verify(b"data", Signature.from_bytes(bytes(sig)))
+
+
+def test_signature_authentication_boundaries():
+    key_pair = KeyPair.generate()
+    signature = key_pair.secret_key.sign(
+        b"data",
+        untrusted_comment="original",
+        trusted_comment="release",
+    )
+    encoded = bytes(signature)
+
+    changed_untrusted = Signature.from_bytes(
+        encoded.replace(
+            b"untrusted comment: original",
+            b"untrusted comment: changed",
+        )
+    )
+    key_pair.public_key.verify(b"data", changed_untrusted)
+
+    changed_trusted = Signature.from_bytes(
+        encoded.replace(
+            b"trusted comment: release",
+            b"trusted comment: changed",
+        )
+    )
+    with pytest.raises(VerifyError):
+        key_pair.public_key.verify(b"data", changed_trusted)
+
+    lines = encoded.splitlines()
+    global_signature = bytearray(base64.b64decode(lines[3]))
+    global_signature[-1] ^= 1
+    lines[3] = base64.b64encode(global_signature)
+    with pytest.raises(VerifyError):
+        key_pair.public_key.verify(b"data", Signature.from_bytes(b"\n".join(lines)))
+
+    with pytest.raises(VerifyError, match="incompatible key identifiers"):
+        KeyPair.generate().public_key.verify(b"data", signature)
+
+
+def test_signature_rejects_modified_data():
+    key_pair = KeyPair.generate()
+    signature = key_pair.secret_key.sign(b"data")
+    with pytest.raises(VerifyError):
+        key_pair.public_key.verify(b"changed", signature)
 
 
 def test_keynum_sk_xor():
@@ -145,16 +166,106 @@ def test_wipe_secret_key():
         lambda: sk.encrypt("password"),
         lambda: sk.decrypt("password"),
         lambda: sk.sign(b"data"),
+        sk.to_base64,
         lambda: bytes(sk),
     ):
         with pytest.raises(Error, match="has been wiped"):
             operation()
 
 
+def test_parsers_reject_invalid_structure():
+    key_pair = KeyPair.generate()
+    signature = key_pair.secret_key.sign(b"data")
+    invalid_signature_base64 = bytes(signature).splitlines()
+    invalid_signature_base64[1] = b"!"
+    invalid_signature_length = bytes(signature).splitlines()
+    invalid_signature_length[1] = base64.b64encode(b"Ed")
+    invalid_global_signature_length = bytes(signature).splitlines()
+    invalid_global_signature_length[3] = base64.b64encode(b"short")
+    invalid_trusted_prefix = bytes(signature).splitlines()
+    invalid_trusted_prefix[2] = b"comment: " + signature.trusted_comment.encode()
+
+    for operation in (
+        lambda: PublicKey.from_base64(b"!"),
+        lambda: SecretKey.from_base64(b"!"),
+        lambda: PublicKey.from_base64(base64.b64encode(b"Ed")),
+        lambda: SecretKey.from_base64(base64.b64encode(b"Ed")),
+        lambda: Signature.from_bytes(b"\n".join(invalid_signature_base64)),
+        lambda: Signature.from_bytes(b"\n".join(invalid_signature_length)),
+        lambda: Signature.from_bytes(b"\n".join(invalid_global_signature_length)),
+        lambda: PublicKey.from_bytes(bytes(key_pair.public_key) + b"\nextra"),
+        lambda: SecretKey.from_bytes(bytes(key_pair.secret_key) + b"\nextra"),
+        lambda: Signature.from_bytes(bytes(signature) + b"\nextra"),
+        lambda: PublicKey.from_bytes(
+            bytes(key_pair.public_key).replace(b"untrusted comment: ", b"comment: ")
+        ),
+        lambda: SecretKey.from_bytes(
+            bytes(key_pair.secret_key).replace(b"untrusted comment: ", b"comment: ")
+        ),
+        lambda: Signature.from_bytes(b"\n".join(invalid_trusted_prefix)),
+    ):
+        with pytest.raises(ParseError):
+            operation()
+
+
+def test_parsers_reject_unsupported_algorithms():
+    key_pair = KeyPair.generate()
+
+    public_key = bytearray(base64.b64decode(key_pair.public_key.to_base64()))
+    public_key[:2] = b"??"
+    with pytest.raises(ParseError, match="unsupported signature algorithm"):
+        PublicKey.from_base64(base64.b64encode(public_key))
+
+    for offset in (2, 4):
+        secret_key = bytearray(base64.b64decode(key_pair.secret_key.to_base64()))
+        secret_key[offset : offset + 2] = b"??"
+        with pytest.raises(ParseError, match="unsupported key algorithm"):
+            SecretKey.from_base64(base64.b64encode(secret_key))
+
+    signature_lines = bytes(key_pair.secret_key.sign(b"data")).splitlines()
+    signature = bytearray(base64.b64decode(signature_lines[1]))
+    signature[:2] = b"??"
+    signature_lines[1] = base64.b64encode(signature)
+    with pytest.raises(ParseError, match="unsupported signature algorithm"):
+        Signature.from_bytes(b"\n".join(signature_lines))
+
+
+def test_file_api(tmp_path: Path):
+    key_pair = KeyPair.generate()
+    secret_key_path = tmp_path / "minisign.key"
+    public_key_path = tmp_path / "minisign.pub"
+    message_path = tmp_path / "payload.bin"
+    secret_key_path.write_bytes(bytes(key_pair.secret_key))
+    public_key_path.write_bytes(bytes(key_pair.public_key))
+    message_path.write_bytes(b"important data" * 1000)
+
+    secret_key = SecretKey.from_file(secret_key_path)
+    public_key = PublicKey.from_file(public_key_path)
+    signature = secret_key.sign_file(
+        message_path,
+        prehash=True,
+        drop_signature=True,
+    )
+    signature_path = tmp_path / "payload.bin.minisig"
+
+    assert Signature.from_file(signature_path) == signature
+    assert "file:payload.bin" in signature.trusted_comment
+    assert "hashed" in signature.trusted_comment
+    public_key.verify_file(message_path, signature)
+    public_key.verify_file(message_path)
+
+
+def test_trusted_comment_length_boundary():
+    secret_key = KeyPair.generate().secret_key
+    secret_key.sign(b"data", trusted_comment="a" * TRUSTED_COMMENT_MAX_LEN)
+    with pytest.raises(ParseError, match="trusted comment too long"):
+        secret_key.sign(b"data", trusted_comment="a" * (TRUSTED_COMMENT_MAX_LEN + 1))
+
+
 def test_sign_verify():
     kp = KeyPair.generate()
-    data = b"very important data"
-    kp.public_key.verify(data, kp.secret_key.sign(data))
+    data = b"very important data" * 1000
+    kp.public_key.verify(data, kp.secret_key.sign(data, prehash=False))
     kp.public_key.verify(data, kp.secret_key.sign(data, prehash=True))
     kp.public_key.verify(
         io.BytesIO(data),
