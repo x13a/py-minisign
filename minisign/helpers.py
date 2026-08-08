@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from typing import (
-    Protocol,
-    runtime_checkable,
-)
+from typing import Protocol, runtime_checkable
 
-from .exceptions import (
-    Error,
-    ParseError,
-)
+from .exceptions import ParseError
 
 
 @runtime_checkable
@@ -49,5 +43,7 @@ def read_data(data: bytes | BytesReaderProto, prehash: bool) -> bytes:
 
 
 def check_comment(s: str) -> None:
-    if "\n" in s:
-        raise Error("comment contains new line char")
+    if any(c in ("\r", "\n") for c in s):
+        raise ParseError("comment contains a line break")
+    if any(c != "\t" and not " " <= c < "\x7f" for c in s):
+        raise ParseError("comment contains an unprintable character")

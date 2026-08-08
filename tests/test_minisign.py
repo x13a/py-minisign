@@ -22,9 +22,7 @@ def test_verify_pure():
         b"trusted comment: timestamp:1555779966\tfile:test\n"
         b"QtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA=="
     )
-    assert (
-        sig.untrusted_comment == "untrusted comment: signature from minisign secret key"
-    )
+    assert sig.untrusted_comment == "signature from minisign secret key"
     assert sig.trusted_comment == "timestamp:1555779966\tfile:test"
     PublicKey.from_base64(
         "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
@@ -38,9 +36,7 @@ def test_verify_prehashed():
         b"trusted comment: timestamp:1556193335\tfile:test\n"
         b"y/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg=="
     )
-    assert (
-        sig.untrusted_comment == "untrusted comment: signature from minisign secret key"
-    )
+    assert sig.untrusted_comment == "signature from minisign secret key"
     assert sig.trusted_comment == "timestamp:1556193335\tfile:test"
     PublicKey.from_base64(
         "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
@@ -76,6 +72,15 @@ def test_signature_conv():
     assert sig == Signature.from_bytes(bytes(sig))
 
 
+def test_sign_prefixed_trusted_comment():
+    kp = KeyPair.generate()
+    sig = kp.secret_key.sign(
+        b"data",
+        trusted_comment="trusted comment: release",
+    )
+    kp.public_key.verify(b"data", Signature.from_bytes(bytes(sig)))
+
+
 def test_keynum_sk_xor():
     kn = KeyPair.generate().secret_key._keynum_sk
     kn_origin = copy.deepcopy(kn)
@@ -97,30 +102,26 @@ def test_secret_key_crypt():
 
 
 def test_key_pair_kdf_selection():
-    unencrypted = KeyPair.generate()
-    assert unencrypted.secret_key._kdf_algorithm == KDFAlgorithm.NONE
-    assert SecretKey.from_bytes(bytes(unencrypted.secret_key)) == unencrypted.secret_key
+    kp_kdf_none = KeyPair.generate()
+    assert kp_kdf_none.secret_key._kdf_algorithm == KDFAlgorithm.NONE
+    assert SecretKey.from_bytes(bytes(kp_kdf_none.secret_key)) == kp_kdf_none.secret_key
     passwd = "strong_password"
-    encrypted = KeyPair.generate(
-        kdf_algorithm=KDFAlgorithm.SCRYPT,
-        password=passwd,
-    )
-    assert encrypted.secret_key._kdf_algorithm == KDFAlgorithm.SCRYPT
-    assert encrypted.secret_key.is_encrypted()
+    kp_kdf_script = KeyPair.generate(kdf_algorithm=KDFAlgorithm.SCRYPT)
+    kp_kdf_script.secret_key.encrypt(passwd)
+    assert kp_kdf_script.secret_key._kdf_algorithm == KDFAlgorithm.SCRYPT
+    assert kp_kdf_script.secret_key.is_encrypted()
     with pytest.raises(Error, match="decrypt it before signing"):
-        encrypted.secret_key.sign(b"data")
-    stored = SecretKey.from_bytes(bytes(encrypted.secret_key))
+        kp_kdf_script.secret_key.sign(b"data")
+    stored = SecretKey.from_bytes(bytes(kp_kdf_script.secret_key))
     stored.decrypt(passwd)
     assert not stored.is_encrypted()
-    assert stored.get_public_key().to_base64() == encrypted.public_key.to_base64()
+    assert stored.get_public_key().to_base64() == kp_kdf_script.public_key.to_base64()
 
 
-def test_encrypted_key_operations_are_safe():
+def test_encrypted_key_operations_safe():
     passwd = "strong_password"
-    sk = KeyPair.generate(
-        kdf_algorithm=KDFAlgorithm.SCRYPT,
-        password=passwd,
-    ).secret_key
+    sk = KeyPair.generate(kdf_algorithm=KDFAlgorithm.SCRYPT).secret_key
+    sk.encrypt(passwd)
     encrypted = bytes(sk)
     with pytest.raises(Error, match="already encrypted"):
         sk.encrypt(passwd)

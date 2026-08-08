@@ -36,9 +36,9 @@ Library
     sk.decrypt('strong_password')
     sig = sk.sign(b'very important data')
 
-    # generate an unencrypted key pair (KDF_NONE)
+    # generate a key pair
 
-    key_pair = minisign.KeyPair.generate()
+    key_pair = minisign.KeyPair.generate(kdf_algorithm=minisign.KDFAlgorithm.SCRYPT)
     sk = key_pair.secret_key
     pk = key_pair.public_key
 
@@ -47,10 +47,3 @@ Library
     sk.encrypt('strong_password')
     with open(os.open('/path/to/secret.key', os.O_CREAT | os.O_WRONLY, 0o600), 'wb') as f:
         f.write(bytes(sk))
-
-    # or generate an encrypted key pair using scrypt
-
-    encrypted_key_pair = minisign.KeyPair.generate(
-        kdf_algorithm=minisign.KDFAlgorithm.SCRYPT,
-        password='strong_password',
-    )
