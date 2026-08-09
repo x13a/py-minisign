@@ -2,8 +2,8 @@
 name = "py-minisign"
 version = "0.20.0"
 authors = [
-  { name = "Frank Denis" },
-  { name = "lucky" },
+  { name = "Frank Denis", email = "github@pureftpd.org" },
+  { name = "lucky", email = "x13a@pm.me" },
 ]
 description = "Python minisign library"
 readme = "README.rst"
