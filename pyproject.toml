@@ -5,7 +5,7 @@ authors = [
   { name = "Frank Denis", email = "github@pureftpd.org" },
   { name = "lucky", email = "x13a@pm.me" },
 ]
-description = "Python minisign library"
+description = "Minisign library"
 readme = "README.rst"
 requires-python = ">=3.10"
 dependencies = [
