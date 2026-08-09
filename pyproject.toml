@@ -16,7 +16,7 @@ license = "ISC"
 license-files = ["LICEN[CS]E*"]
 
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Security :: Cryptography",
