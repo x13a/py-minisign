@@ -199,6 +199,7 @@ Run the test suite and static checks:
 
     make format
     make check
+    make test
 
 Build the source distribution and wheel:
 
