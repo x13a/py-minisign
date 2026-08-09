@@ -93,23 +93,29 @@ serialized:
         with open("/path/to/minisign.pub", "wb") as file:
             file.write(bytes(key_pair.public_key) + b"\n")
 
-The KDF can also be selected explicitly at generation time. A key generated
-with ``SCRYPT`` still needs an ``encrypt()`` call before it is encrypted:
+``encrypt()`` accepts custom scrypt operation and memory limits. These values
+are stored in the secret-key format, and the concrete ``N``, ``r`` and ``p``
+parameters are derived from them in the same way as in Minisign:
 
 .. code:: python
 
-    key_pair = minisign.KeyPair.generate(
-        kdf_algorithm=minisign.KDFAlgorithm.SCRYPT,
+    key_pair = minisign.KeyPair.generate()
+    key_pair.secret_key.encrypt(
+        "strong password",
+        opslimit=2_097_152,
+        memlimit=67_108_864,
     )
-    key_pair.secret_key.encrypt("strong password")
 
-Use ``KDF_NONE`` only when an unencrypted secret key is intentionally required:
+Increasing these limits makes password derivation more expensive. Keep the
+defaults unless the additional cost has been measured for every system that
+will need to decrypt the key.
+
+To intentionally keep a secret key unencrypted, serialize it without calling
+``encrypt()``:
 
 .. code:: python
 
-    key_pair = minisign.KeyPair.generate(
-        kdf_algorithm=minisign.KDFAlgorithm.NONE,
-    )
+    key_pair = minisign.KeyPair.generate()
     encoded_secret_key = bytes(key_pair.secret_key)
 
 Sign and verify files

@@ -3,6 +3,7 @@ https://jedisct1.github.io/minisign
 """
 
 import base64
+import copy
 import enum
 import hashlib
 import hmac
@@ -34,6 +35,13 @@ from .helpers import (
     read_data,
     split_lines,
 )
+from .scrypt import (
+    MEMLIMIT,
+    MEMLIMIT_MAX,
+    OPSLIMIT,
+    OPSLIMIT_MAX,
+    scrypt_params_from_limits,
+)
 
 ALG_LEN = 2
 KDF_PARAM_LEN = 8
@@ -48,11 +56,6 @@ KEYNUM_PK_LEN = KEY_ID_LEN + KEY_LEN
 KEYNUM_SK_LEN = KEY_ID_LEN + (KEY_LEN << 1) + CHECKSUM_LEN
 PUBLIC_KEY_LEN = ALG_LEN + KEYNUM_PK_LEN
 SECRET_KEY_LEN = (ALG_LEN * 3) + SALT_LEN + (KDF_PARAM_LEN * 2) + KEYNUM_SK_LEN
-
-OPSLIMIT = 1_048_576
-MEMLIMIT = 33_554_432
-MEMLIMIT_MAX = 1_073_741_824
-N_LOG2_MAX = 20
 
 SIG_EXT = "minisig"
 BYTE_ORDER: Literal["little", "big"] = "little"
@@ -282,19 +285,20 @@ class KeynumSK:
             self.public_key,
             self.checksum,
         ):
-            value[0:] = b"\0" * len(value)
+            value[:] = bytes(len(value))
 
-    def xor(self, key: bytes) -> None:
+    def xor(self, key: bytes | bytearray) -> None:
         assert len(key) == KEYNUM_SK_LEN
-        buf = Reader(key)
-        for l, size in (
-            (self.key_id, KEY_ID_LEN),
-            (self.secret_key, KEY_LEN),
-            (self.public_key, KEY_LEN),
-            (self.checksum, CHECKSUM_LEN),
+        offset = 0
+        for value in (
+            self.key_id,
+            self.secret_key,
+            self.public_key,
+            self.checksum,
         ):
-            for idx, (v1, v2) in enumerate(zip(l[:], buf.read(size))):
-                l[idx] = v1 ^ v2
+            for index in range(len(value)):
+                value[index] ^= key[offset + index]
+            offset += len(value)
 
     def __bytes__(self) -> bytes:
         return (
@@ -405,56 +409,55 @@ class SecretKey:
         self._check_is_wiped()
         if not self.is_encrypted():
             return
-        encrypted_keynum = bytes(self._keynum_sk)
-        self._crypt(password)
-        if not hmac.compare_digest(
-            self._calc_checksum(), bytes(self._keynum_sk.checksum)
-        ):
-            self._keynum_sk = KeynumSK.from_bytes(encrypted_keynum)
-            raise Error("wrong password for that key")
+        candidate = copy.deepcopy(self._keynum_sk)
+        try:
+            self._crypt(candidate, password)
+            if not hmac.compare_digest(
+                self._calc_checksum(candidate), bytes(candidate.checksum)
+            ):
+                raise Error("wrong password for that key")
+        except BaseException:
+            candidate.wipe()
+            raise
+        encrypted = self._keynum_sk
+        self._keynum_sk = candidate
+        encrypted.wipe()
 
-    def encrypt(self, password: str) -> None:
+    def encrypt(
+        self,
+        password: str,
+        *,
+        opslimit: int = OPSLIMIT,
+        memlimit: int = MEMLIMIT,
+    ) -> None:
         self._check_is_wiped()
         if self.is_encrypted():
             raise Error("secret key is already encrypted")
-        if self._kdf_algorithm == KDFAlgorithm.NONE:
-            self._kdf_algorithm = KDFAlgorithm.SCRYPT
-            self._kdf_salt = secrets.token_bytes(SALT_LEN)
-            self._kdf_opslimit = OPSLIMIT
-            self._kdf_memlimit = MEMLIMIT
-        elif self._kdf_algorithm != KDFAlgorithm.SCRYPT:
-            raise Error("unsupported KDF algorithm")
-        self._crypt(password)
+        if not 0 <= opslimit <= OPSLIMIT_MAX:
+            raise Error("invalid opslimit")
+        if not 0 <= memlimit <= MEMLIMIT_MAX:
+            raise Error("invalid memlimit")
+        self._kdf_algorithm = KDFAlgorithm.SCRYPT
+        self._kdf_salt = secrets.token_bytes(SALT_LEN)
+        self._kdf_opslimit = opslimit
+        self._kdf_memlimit = memlimit
+        self._crypt(self._keynum_sk, password)
 
-    def _crypt(self, password: str) -> None:
-        if self._kdf_memlimit > MEMLIMIT_MAX:
-            raise Error("memlimit too high")
-        opslimit = max(32768, self._kdf_opslimit)
-        n_log2 = 1
-        r = 8
-        p = 0
-        if opslimit < self._kdf_memlimit // 32:
-            maxn = opslimit // (r * 4)
-            p = 1
-        else:
-            maxn = self._kdf_memlimit // (r * 128)
-        while n_log2 < 63:
-            if 1 << n_log2 > maxn // 2:
-                break
-            n_log2 += 1
-        if not p:
-            p = min(0x3FFFFFFF, (opslimit // 4) // (1 << n_log2)) // r
-        if n_log2 > N_LOG2_MAX:
-            raise Error("n_log2 too high")
-        self._keynum_sk.xor(
+    def _crypt(self, keynum_sk: KeynumSK, password: str) -> None:
+        params = scrypt_params_from_limits(self._kdf_opslimit, self._kdf_memlimit)
+        stream = bytearray(
             scrypt.Scrypt(
                 salt=self._kdf_salt,
                 length=KEYNUM_SK_LEN,
-                n=1 << n_log2,
-                r=r,
-                p=p,
+                n=params.N,
+                r=params.r,
+                p=params.p,
             ).derive(password.encode())
         )
+        try:
+            keynum_sk.xor(stream)
+        finally:
+            stream[:] = bytes(len(stream))
 
     def sign(
         self,
@@ -517,16 +520,18 @@ class SecretKey:
                 f1.write(b"\n")
         return sig
 
-    def _calc_checksum(self) -> bytes:
+    def _calc_checksum(self, keynum_sk: KeynumSK | None = None) -> bytes:
+        if keynum_sk is None:
+            keynum_sk = self._keynum_sk
         hasher = hashlib.blake2b(digest_size=CHECKSUM_LEN)
         hasher.update(self._signature_algorithm.value)
-        hasher.update(self._keynum_sk.key_id)
-        hasher.update(self._keynum_sk.secret_key)
-        hasher.update(self._keynum_sk.public_key)
+        hasher.update(keynum_sk.key_id)
+        hasher.update(keynum_sk.secret_key)
+        hasher.update(keynum_sk.public_key)
         return hasher.digest()
 
     def _update_checksum(self) -> None:
-        self._keynum_sk.checksum[0:] = self._calc_checksum()
+        self._keynum_sk.checksum[:] = self._calc_checksum()
 
     def to_base64(self) -> bytes:
         self._check_is_wiped()
@@ -556,22 +561,17 @@ class KeyPair:
     public_key: PublicKey
 
     @classmethod
-    def generate(
-        cls,
-        *,
-        kdf_algorithm: KDFAlgorithm = KDFAlgorithm.NONE,
-    ) -> Self:
-        is_script = kdf_algorithm == KDFAlgorithm.SCRYPT
+    def generate(cls) -> Self:
         private_key = ed25519.Ed25519PrivateKey.generate()
         key_id = secrets.token_bytes(KEY_ID_LEN)
         sk = SecretKey(
             _untrusted_comment=None,
             _signature_algorithm=SignatureAlgorithm.PURE_ED_DSA,
-            _kdf_algorithm=kdf_algorithm,
+            _kdf_algorithm=KDFAlgorithm.NONE,
             _cksum_algorithm=CksumAlgorithm.BLAKE2b,
-            _kdf_salt=(secrets.token_bytes(SALT_LEN) if is_script else bytes(SALT_LEN)),
-            _kdf_opslimit=OPSLIMIT if is_script else 0,
-            _kdf_memlimit=MEMLIMIT if is_script else 0,
+            _kdf_salt=bytes(SALT_LEN),
+            _kdf_opslimit=0,
+            _kdf_memlimit=0,
             _keynum_sk=KeynumSK(
                 key_id=bytearray(key_id),
                 secret_key=bytearray(

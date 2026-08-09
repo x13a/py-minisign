@@ -166,7 +166,7 @@ def test_key_pair_kdf_selection():
     assert kp_kdf_none.secret_key._kdf_algorithm == KDFAlgorithm.NONE
     assert SecretKey.from_bytes(bytes(kp_kdf_none.secret_key)) == kp_kdf_none.secret_key
     passwd = "strong_password"
-    kp_kdf_script = KeyPair.generate(kdf_algorithm=KDFAlgorithm.SCRYPT)
+    kp_kdf_script = KeyPair.generate()
     kp_kdf_script.secret_key.encrypt(passwd)
     assert kp_kdf_script.secret_key._kdf_algorithm == KDFAlgorithm.SCRYPT
     assert kp_kdf_script.secret_key.is_encrypted()
@@ -180,7 +180,7 @@ def test_key_pair_kdf_selection():
 
 def test_encrypted_key_operations_safe():
     passwd = "strong_password"
-    sk = KeyPair.generate(kdf_algorithm=KDFAlgorithm.SCRYPT).secret_key
+    sk = KeyPair.generate().secret_key
     sk.encrypt(passwd)
     encrypted = bytes(sk)
     with pytest.raises(Error, match="already encrypted"):
