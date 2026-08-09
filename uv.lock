@@ -219,7 +219,7 @@ wheels = [
 
 [[package]]
 name = "py-minisign"
-version = "0.14"
+version = "0.20.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
