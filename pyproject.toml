@@ -15,6 +15,11 @@ dependencies = [
 license = "ISC"
 license-files = ["LICEN[CS]E*"]
 
+keywords = [
+    "cryptography",
+    "signature",
+    "ed25519",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Operating System :: OS Independent",
