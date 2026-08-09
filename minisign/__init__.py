@@ -7,17 +7,13 @@ from .exceptions import (
     ParseError,
     VerifyError,
 )
-from .minisign import (
-    KDFAlgorithm,
-    KeyPair,
-    PublicKey,
-    SecretKey,
-    Signature,
-)
+from .minisign import KeyPair
+from .public_key import PublicKey
+from .secret_key import SecretKey
+from .signature import Signature
 
 __all__ = [
     "Error",
-    "KDFAlgorithm",
     "KeyPair",
     "ParseError",
     "PublicKey",

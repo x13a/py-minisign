@@ -110,6 +110,35 @@ Increasing these limits makes password derivation more expensive. Keep the
 defaults unless the additional cost has been measured for every system that
 will need to decrypt the key.
 
+Change or remove a password
+---------------------------
+
+Decrypt and encrypt a secret key again to change its password:
+
+.. code:: python
+
+    import minisign
+
+    secret_key = minisign.SecretKey.from_file("/path/to/minisign.key")
+    secret_key.decrypt("old password")
+    secret_key.encrypt("new password")
+
+``encrypt()`` generates a new random salt. The key identifier, Ed25519 key
+material and public key remain unchanged, so existing signatures remain valid.
+
+Use ``remove_password()`` to remove password protection completely:
+
+.. code:: python
+
+    import minisign
+
+    secret_key = minisign.SecretKey.from_file("/path/to/minisign.key")
+    secret_key.remove_password("current password")
+
+After this operation the key uses ``KDF_NONE``. Serializing it with
+``bytes(secret_key)`` produces an unencrypted secret key; store it only in a
+file with appropriately restricted permissions.
+
 To intentionally keep a secret key unencrypted, serialize it without calling
 ``encrypt()``:
 
@@ -162,19 +191,17 @@ Install the project and development dependencies:
 
 .. code:: shell
 
-    uv sync --group dev
+    make sync
 
 Run the test suite and static checks:
 
 .. code:: shell
 
-    uv run pytest
-    uvx ruff format
-    uvx ruff check
-    uvx ty check
+    make format
+    make check
 
 Build the source distribution and wheel:
 
 .. code:: shell
 
-    uv build
+    make build

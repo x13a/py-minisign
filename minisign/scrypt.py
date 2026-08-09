@@ -1,6 +1,12 @@
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
+from cryptography.hazmat.primitives.kdf import scrypt
+
+from .const import KEYNUM_SK_LEN
 from .exceptions import Error
+
+if TYPE_CHECKING:
+    from .secret_key import KeynumSK
 
 OPSLIMIT = 1_048_576
 MEMLIMIT = 33_554_432
@@ -16,8 +22,10 @@ class ScryptParams(NamedTuple):
 
 
 def scrypt_params_from_limits(opslimit: int, memlimit: int) -> ScryptParams:
-    if memlimit > MEMLIMIT_MAX:
-        raise Error("memlimit too high")
+    if not 0 <= opslimit <= OPSLIMIT_MAX:
+        raise Error("invalid opslimit")
+    if not 0 <= memlimit <= MEMLIMIT_MAX:
+        raise Error("invalid memlimit")
     opslimit = max(32768, opslimit)
     n_log2 = 1
     r = 8
@@ -40,3 +48,27 @@ def scrypt_params_from_limits(opslimit: int, memlimit: int) -> ScryptParams:
         r=r,
         p=p,
     )
+
+
+def xor_crypt(
+    *,
+    keynum_sk: "KeynumSK",
+    password: str,
+    salt: bytes,
+    opslimit: int,
+    memlimit: int,
+) -> None:
+    params = scrypt_params_from_limits(opslimit, memlimit)
+    stream = bytearray(
+        scrypt.Scrypt(
+            salt=salt,
+            length=KEYNUM_SK_LEN,
+            n=params.N,
+            r=params.r,
+            p=params.p,
+        ).derive(password.encode())
+    )
+    try:
+        keynum_sk.xor(stream)
+    finally:
+        stream[:] = bytes(len(stream))

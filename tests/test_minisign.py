@@ -6,11 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from minisign.minisign import (
-    KEYNUM_SK_LEN,
-    TRUSTED_COMMENT_MAX_LEN,
+from minisign import (
     Error,
-    KDFAlgorithm,
     KeyPair,
     ParseError,
     PublicKey,
@@ -18,6 +15,8 @@ from minisign.minisign import (
     Signature,
     VerifyError,
 )
+from minisign.algo import KDFAlgorithm
+from minisign.const import KEYNUM_SK_LEN, TRUSTED_COMMENT_MAX_LEN
 
 
 def test_public_key_conv():
@@ -192,10 +191,62 @@ def test_encrypted_key_operations_safe():
     assert sk.is_encrypted()
 
 
+def test_secret_key_remove_password():
+    password = "strong_password"
+    key_pair = KeyPair.generate()
+    signature = key_pair.secret_key.sign(b"data")
+    key_pair.secret_key.encrypt(
+        password,
+        opslimit=65_536,
+        memlimit=1_048_576,
+    )
+    secret_key = SecretKey.from_bytes(bytes(key_pair.secret_key))
+
+    secret_key.remove_password(password)
+
+    assert not secret_key.is_encrypted()
+    assert secret_key._kdf_algorithm == KDFAlgorithm.NONE
+    assert secret_key._kdf_salt == bytes(len(secret_key._kdf_salt))
+    assert secret_key._kdf_opslimit == 0
+    assert secret_key._kdf_memlimit == 0
+
+    stored = SecretKey.from_bytes(bytes(secret_key))
+    assert not stored.is_encrypted()
+    assert stored._kdf_algorithm == KDFAlgorithm.NONE
+    assert stored.get_public_key() == key_pair.public_key
+    key_pair.public_key.verify(b"data", signature)
+
+
+def test_secret_key_remove_password_rejects_wrong_password_without_modification():
+    secret_key = KeyPair.generate().secret_key
+    secret_key.encrypt(
+        "strong_password",
+        opslimit=65_536,
+        memlimit=1_048_576,
+    )
+    encrypted = bytes(secret_key)
+
+    with pytest.raises(Error, match="wrong password"):
+        secret_key.remove_password("wrong_password")
+
+    assert secret_key.is_encrypted()
+    assert bytes(secret_key) == encrypted
+
+
+def test_secret_key_rejects_shallow_copy():
+    secret_key = KeyPair.generate().secret_key
+
+    with pytest.raises(TypeError, match="secret keys cannot be shallow-copied"):
+        copy.copy(secret_key)
+
+    signature = secret_key.sign(b"data")
+    secret_key.get_public_key().verify(b"data", signature)
+
+
 def test_wipe_secret_key():
     sk = KeyPair.generate().secret_key
     sk.wipe()
-    assert sk.is_wiped
+    assert sk.is_wiped()
     assert not any(bytes(sk._keynum_sk))
     sk.wipe()
     for operation in (
@@ -204,6 +255,7 @@ def test_wipe_secret_key():
         sk.is_encrypted,
         lambda: sk.encrypt("password"),
         lambda: sk.decrypt("password"),
+        lambda: sk.remove_password("password"),
         lambda: sk.sign(b"data"),
         sk.to_base64,
         lambda: bytes(sk),
@@ -217,9 +269,9 @@ def test_secret_key_context_manager_wipes_on_exit():
 
     with secret_key as entered:
         assert entered is secret_key
-        assert not secret_key.is_wiped
+        assert not secret_key.is_wiped()
 
-    assert secret_key.is_wiped
+    assert secret_key.is_wiped()
     assert not any(bytes(secret_key._keynum_sk))
 
 
@@ -229,7 +281,7 @@ def test_secret_key_context_manager_wipes_on_exception():
     with pytest.raises(RuntimeError, match="signing failed"), secret_key:
         raise RuntimeError("signing failed")
 
-    assert secret_key.is_wiped
+    assert secret_key.is_wiped()
     assert not any(bytes(secret_key._keynum_sk))
 
 

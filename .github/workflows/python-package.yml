@@ -44,8 +44,13 @@ jobs:
 
     - name: Lint
       run: |
+        uv run ruff format --check
         uv run ruff check
         uv run ty check
 
     - name: Test with pytest
       run: uv run --frozen pytest
+
+    - name: Build package
+      if: matrix.python-version == '3.14'
+      run: uv build --no-sources

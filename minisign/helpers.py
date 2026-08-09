@@ -1,12 +1,11 @@
 import base64
 import binascii
 import hashlib
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from .exceptions import ParseError
 
 
-@runtime_checkable
 class BytesReaderProto(Protocol):
     def read(self, size: int = -1, /) -> bytes: ...
 
@@ -29,21 +28,18 @@ class Reader:
 
 
 def read_data(data: bytes | BytesReaderProto, prehash: bool) -> bytes:
-    if prehash:
-        if isinstance(data, BytesReaderProto):
-            hasher = hashlib.blake2b()
-            while chunk := data.read(1 << 13):
-                hasher.update(chunk)
-            data = hasher.digest()
-        else:
-            data = hashlib.blake2b(data).digest()
-    elif isinstance(data, BytesReaderProto):
-        data = data.read()
-    return data
+    if isinstance(data, bytes):
+        return hashlib.blake2b(data).digest() if prehash else data
+    if not prehash:
+        return data.read()
+    hasher = hashlib.blake2b()
+    while chunk := data.read(1 << 13):
+        hasher.update(chunk)
+    return hasher.digest()
 
 
 def check_comment(s: str) -> None:
-    if any(c in ("\r", "\n") for c in s):
+    if "\r" in s or "\n" in s:
         raise ParseError("comment contains a line break")
     if any(c != "\t" and not " " <= c < "\x7f" for c in s):
         raise ParseError("comment contains an unprintable character")
