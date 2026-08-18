@@ -1,6 +1,6 @@
 [project]
 name = "py-minisign"
-version = "0.21.0"
+version = "0.21.1"
 authors = [
   { name = "Frank Denis", email = "github@pureftpd.org" },
   { name = "lucky", email = "x13a@pm.me" },
