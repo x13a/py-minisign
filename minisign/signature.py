@@ -7,7 +7,7 @@ from .algo import SignatureAlgorithm
 from .const import (
     ALG_LEN,
     KEY_ID_LEN,
-    SIG_1_LEN,
+    LINE_1_LEN,
     SIG_LEN,
     TRUSTED_COMMENT_PREFIX,
     UNTRUSTED_COMMENT_PREFIX,
@@ -36,7 +36,7 @@ class Signature:
     def from_bytes(cls, data: bytes) -> Self:
         lines = split_lines(data, 4)
         glob_sig = decode_base64(lines[3], SIG_LEN)
-        buf = Reader(decode_base64(lines[1], SIG_1_LEN))
+        buf = Reader(decode_base64(lines[1], LINE_1_LEN))
         try:
             signature_algorithm = SignatureAlgorithm(buf.read(ALG_LEN))
         except ValueError as err:
